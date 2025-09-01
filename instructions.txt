@@ -1,0 +1,484 @@
+Overview
+This repository reproduces “Enhanced prediction of stock markets using a novel deep learning model PLSTM‑TAL,” implementing data preparation, EEMD denoising, CAE feature extraction, a peephole LSTM with a Temporal Attention Layer, Bayesian hyperparameter optimization, and evaluation on S&P 500, FTSE, SSE, and Nifty 50 daily data from 2005‑01‑01 to 2022‑03‑31.
+The core contribution to implement is a hybrid deep model that feeds filtered prices and CAE‑extracted features to a PLSTM‑TAL classifier optimized via Bayesian search and compared against CNN, vanilla LSTM, SVM, and RF across accuracy, precision, recall, F1, AUC‑ROC, PR‑AUC, and MCC.
+
+Objectives
+Implement the full pipeline: OHLCV ingestion, 40 TA‑Lib indicators, min‑max scaling, EEMD denoising, CAE feature extraction, PLSTM‑TAL classification, Bayesian hyperparameter tuning, and evaluation with stated metrics.
+
+Match the paper’s labeling rule and default hyperparameters (Units=64, Activation=tanh, Optimizer=Adamax, Loss=binary crossentropy, Dropout=0.1) while enabling ablations versus CNN/LSTM/SVM/RF.
+
+Data and labeling
+Target datasets: S&P 500, FTSE 100, SSE Composite, and Nifty 50 at daily frequency from 2005‑01‑01 to 2022‑03‑31, including OHLCV and derived features.
+
+Binary label: upward trend if 
+r
+i
+(
+t
++
+1
+)
+>
+r
+i
+(
+t
+)
+r 
+i
+ (t+1)>r 
+i
+ (t), else downward, where 
+r
+i
+(
+t
+)
+r 
+i
+ (t) is the return at time 
+t
+t.
+
+Project structure
+data/: raw CSVs and cached processed tensors.
+
+src/: modular Python code: io, indicators, eemd, cae, model_plstm_tal, train, eval, and tune modules.
+
+configs/: YAML/JSON configs for experiments with defaults from Table 2 and dataset splits.
+
+Environment setup
+Python 3.10+, plus numpy, pandas, scikit‑learn, torch or tensorflow (choose one), PyTorch‑Lightning or Keras for training loop, and TA‑Lib for indicators.
+
+Install TA‑Lib C library and Python wrapper; on macOS via Homebrew “brew install ta-lib,” then “pip install TA-Lib,” with equivalent Linux/Windows steps as per official guidance.
+
+Technical indicators (TA‑Lib)
+Compute the following 40 indicators with TA‑Lib; map each to TA‑Lib functions, and compute LOG_RETURN manually as 
+log
+⁡
+(
+P
+t
+P
+t
+−
+1
+)
+log( 
+P 
+t−1
+ 
+P 
+t
+ 
+ ):
+TECHNICAL_INDICATORS = ['BBANDS','WMA','EMA','DEMA','KAMA','MAMA','MIDPRICE','SAR','SMA','T3','TEMA','TRIMA','AD','ADOSC','OBV','MEDPRICE','TYPPRICE','WCLPRICE','ADX','ADXR','APO','AROON','AROONOSC','BOP','CCI','CMO','DX','MACD','MFI','MINUS_DI','MOM','PLUS_DI','LOG_RETURN','PPO','ROC','RSI','STOCH','STOCHRSI','ULTOSC','WILLR'].
+
+TA‑Lib function reference includes all above except LOG_RETURN, which is derived directly from close prices as a custom feature.
+
+Preprocessing pipeline
+Handle missing values; apply min‑max scaling to features prior to CAE and model training, following the described standardization approach.
+
+Compute the 40 indicators from OHLCV and append LOG_RETURN to form the initial feature set before CAE.
+
+EEMD denoising
+Apply EEMD to the closing price series to obtain IMFs; remove the most complex IMF (highest Sample Entropy, typically IMF1) and reconstruct a filtered price series 
+x
+filtered
+(
+t
+)
+=
+x
+(
+t
+)
+−
+IMF
+max SaEn
+(
+t
+)
+x 
+filtered
+ (t)=x(t)−IMF 
+max SaEn
+ (t).
+
+Use the filtered series as an additional covariate input, not as a full per‑IMF reconstruction, to avoid error accumulation from independent sub‑signal predictions.
+
+CAE feature extraction
+Train a Contractive Autoencoder on the standardized feature matrix to produce robust, low‑dimensional, noise‑invariant representations using the CAE loss 
+L
+C
+A
+E
+=
+∑
+L
+(
+x
+,
+g
+(
+h
+(
+X
+)
+)
+)
++
+λ
+∥
+J
+h
+(
+X
+)
+∥
+F
+2
+L 
+CAE
+ =∑L(x,g(h(X)))+λ∥J 
+h
+ (X)∥ 
+F
+2
+ .
+
+Use the encoder outputs as inputs to the PLSTM‑TAL alongside the filtered price covariate.
+
+Model architecture: PLSTM‑TAL
+Use peephole LSTM equations to let gates access the cell state, then feed the LSTM hidden sequence to a Temporal Attention Layer that weights time steps before final classification.
+
+The architecture: Input windowed sequences of [CAE features || filtered price]; PLSTM layers; temporal attention; dense layers; sigmoid output for binary direction classification. 
+
+Hyperparameter tuning
+Optimize units, activation, optimizer, loss, dropout, and window size with Bayesian optimization; supply defaults matching the paper’s optimal set: Units=64, Activation=tanh, Optimizer=Adamax, Loss=binary crossentropy, Dropout=0.1.
+
+Compare tuned PLSTM‑TAL against CNN, LSTM, SVM, and RF on validation folds using AUC‑ROC, PR‑AUC, MCC, F1, precision, recall, and accuracy.
+
+Evaluation and reporting
+Report confusion matrices and curves; the paper’s reported accuracies (approx. 85% S&P 500, 96% FTSE, 88% SSE, 85% Nifty) serve as orientation, acknowledging re‑implementation variance.
+
+Emphasize PR‑AUC and MCC alongside accuracy and F1 to capture class‑imbalance and decision‑quality characteristics.
+
+Pseudocode: indicators and labeling
+python
+# Inputs: DataFrame df with columns: date, open, high, low, close, volume
+# Outputs: X_full (features), y (labels)
+
+# 1) Indicators (TA-Lib)
+# Use talib with vectorized calls; LOG_RETURN = np.log(close / close.shift(1))
+# Ensure alignment and drop initial NaNs from rolling computations
+def compute_features(df):
+    import talib
+    X = {}
+    close, high, low, volume = df['close'], df['high'], df['low'], df['volume']
+    # Overlap studies
+    upper, middle, lower = talib.BBANDS(close)
+    X['BBANDS_upper'], X['BBANDS_middle'], X['BBANDS_lower'] = upper, middle, lower
+    X['WMA'] = talib.WMA(close)
+    X['EMA'] = talib.EMA(close)
+    X['DEMA'] = talib.DEMA(close)
+    X['KAMA'] = talib.KAMA(close)
+    X['MAMA'], _ = talib.MAMA(close)
+    X['MIDPRICE'] = talib.MIDPRICE(high, low)
+    X['SAR'] = talib.SAR(high, low)
+    X['SMA'] = talib.SMA(close)
+    X['T3'] = talib.T3(close)
+    X['TEMA'] = talib.TEMA(close)
+    X['TRIMA'] = talib.TRIMA(close)
+    # Volume indicators
+    X['AD'] = talib.AD(high, low, close, volume)
+    X['ADOSC'] = talib.ADOSC(high, low, close, volume)
+    X['OBV'] = talib.OBV(close, volume)
+    # Price transforms
+    X['MEDPRICE'] = talib.MEDPRICE(high, low)
+    X['TYPPRICE'] = talib.TYPPRICE(high, low, close)
+    X['WCLPRICE'] = talib.WCLPRICE(high, low, close)
+    # Momentum
+    X['ADX'] = talib.ADX(high, low, close)
+    X['ADXR'] = talib.ADXR(high, low, close)
+    X['APO'] = talib.APO(close)
+    aroondn, aroonup = talib.AROON(high, low)
+    X['AROON_down'], X['AROON_up'] = aroondn, aroonup
+    X['AROONOSC'] = talib.AROONOSC(high, low)
+    X['BOP'] = talib.BOP(df['open'], high, low, close)
+    X['CCI'] = talib.CCI(high, low, close)
+    X['CMO'] = talib.CMO(close)
+    X['DX'] = talib.DX(high, low, close)
+    macd, macd_signal, macd_hist = talib.MACD(close)
+    X['MACD'], X['MACD_signal'], X['MACD_hist'] = macd, macd_signal, macd_hist
+    X['MFI'] = talib.MFI(high, low, close, volume)
+    X['MINUS_DI'] = talib.MINUS_DI(high, low, close)
+    X['MOM'] = talib.MOM(close)
+    X['PLUS_DI'] = talib.PLUS_DI(high, low, close)
+    X['PPO'] = talib.PPO(close)
+    X['ROC'] = talib.ROC(close)
+    X['RSI'] = talib.RSI(close)
+    slowk, slowd = talib.STOCH(high, low, close)
+    X['STOCH_k'], X['STOCH_d'] = slowk, slowd
+    X['STOCHRSI'] = talib.STOCHRSI(close)
+    X['ULTOSC'] = talib.ULTOSC(high, low, close)
+    X['WILLR'] = talib.WILLR(high, low, close)
+    # Custom
+    X['LOG_RETURN'] = np.log(close / close.shift(1))
+    X_full = pd.DataFrame(X).dropna()
+    return X_full
+Labeling: 
+y
+(
+t
+)
+=
+1
+[
+r
+(
+t
++
+1
+)
+>
+r
+(
+t
+)
+]
+y(t)=1[r(t+1)>r(t)], with 
+r
+(
+t
+)
+r(t) computed from close prices; align labels to the end of each input window and drop edge NaNs.
+
+Pseudocode: EEMD denoising
+python
+# Inputs: close price series p(t)
+# Outputs: filtered series p_filtered(t)
+
+def eemd_filter(close):
+    # 1) Run EEMD to obtain IMFs: [imf1, imf2, ..., imfK], residue
+    # 2) Compute Sample Entropy SaEn(imf_i) for each IMF
+    # 3) Identify IMF with max SaEn (usually IMF1)
+    # 4) p_filtered = close - imf_with_max_SaEn
+    return p_filtered
+Pseudocode: Contractive Autoencoder (CAE)
+python
+# Inputs: standardized feature matrix X (T x D)
+# Outputs: Z = Encoder(X) with dimensionality d << D
+
+class CAE(nn.Module):
+    def __init__(self, D, d, hidden):
+        super().__init__()
+        self.encoder = nn.Sequential(nn.Linear(D, hidden), nn.ReLU(), nn.Linear(hidden, d))
+        self.decoder = nn.Sequential(nn.Linear(d, hidden), nn.ReLU(), nn.Linear(hidden, D))
+    def forward(self, x):
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        return z, x_hat
+
+def cae_loss(x, x_hat, encoder, lam):
+    recon = F.mse_loss(x_hat, x)
+    # Contractive penalty: Frobenius norm of Jacobian of encoder activations wrt input
+    # Approximate via sum of squared gradients of encoder output wrt input
+    # (Implement using autograd; detach decoder.)
+    return recon + lam * jacobian_frobenius_norm(encoder, x)
+
+# Train CAE, then use encoder(x) to produce features Z for modeling
+Pseudocode: PLSTM with Temporal Attention
+python
+# Peephole LSTM cell allows gates to read cell state; use a framework that exposes peephole connections
+# If not available, implement a custom LSTMCell with peephole terms in gate pre-activations.
+
+class PeepholeLSTMCell(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super().__init__()
+        # Weight matrices for [x_t, h_{t-1}] and peephole vectors to c_{t-1}/c_t
+        # Implement equations consistent with ft, it, c_t, ot, h_t definitions
+        ...
+
+    def forward(self, x_t, h_prev, c_prev):
+        # Compute gates with peephole connections to c_prev (and c_t for output gate)
+        # f_t = sigma(W_f [x_t, h_{t-1}] + w_cf * c_{t-1} + b_f)
+        # i_t = sigma(W_i [x_t, h_{t-1}] + w_ci * c_{t-1} + b_i)
+        # c_hat = tanh(W_c [x_t, h_{t-1}] + b_c)
+        # c_t = f_t * c_{t-1} + i_t * c_hat
+        # o_t = sigma(W_o [x_t, h_{t-1}] + w_co * c_t + b_o)
+        # h_t = o_t * tanh(c_t)
+        return h_t, c_t
+
+class TemporalAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.w = nn.Linear(hidden_size, 1)  # simple additive attention
+    def forward(self, H):  # H: (T, B, H)
+        e = self.w(H).squeeze(-1)          # (T, B)
+        alpha = torch.softmax(e, dim=0)    # (T, B)
+        context = (H * alpha.unsqueeze(-1)).sum(dim=0)  # (B, H)
+        return context, alpha
+
+class PLSTM_TAL(nn.Module):
+    def __init__(self, in_dim, hidden_size, n_layers=1, dropout=0.1):
+        super().__init__()
+        self.rnn = PeepholeLSTMStack(in_dim, hidden_size, n_layers, dropout)
+        self.attn = TemporalAttention(hidden_size)
+        self.out = nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden_size, 1))
+    def forward(self, X):  # X: (T, B, in_dim)
+        H = self.rnn(X)                    # (T, B, H)
+        ctx, alpha = self.attn(H)          # (B, H), (T, B)
+        logits = self.out(ctx).squeeze(-1) # (B,)
+        return logits, alpha
+Training loop and optimization
+python
+# Windowing: build sequences of length L with step S, align y at t_end using the labeling rule
+# Optimizer: Adamax; Loss: BCEWithLogitsLoss; Activation: tanh in PLSTM as per tuned defaults
+# Bayesian optimization: search over L (window), hidden_size, dropout, learning_rate, batch_size
+
+def train_epoch(model, loader, optimizer, criterion):
+    model.train()
+    for X, y in loader:
+        optimizer.zero_grad()
+        logits, _ = model(X)
+        loss = criterion(logits, y.float())
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+def evaluate(model, loader):
+    model.eval()
+    y_true, y_prob = [], []
+    with torch.no_grad():
+        for X, y in loader:
+            logits, _ = model(X)
+            y_true.append(y.numpy())
+            y_prob.append(torch.sigmoid(logits).numpy())
+    # Compute accuracy, precision, recall, F1, AUC-ROC, PR-AUC, MCC
+    return metrics
+Default configuration (Table 2)
+Units: 64; Activation: tanh; Optimizer: Adamax; Loss: binary crossentropy; Dropout: 0.1; adopt equivalent settings in the chosen deep learning framework.
+
+Use Bayesian optimization to refine window length, hidden size, dropout, and learning rate; seed runs and use stratified splits by time for validation.
+
+Baselines for comparison
+CNN, LSTM (no peepholes, no attention), SVM, and Random Forest trained on comparable inputs without EEMD+CAE or with only standardized features to reflect the ablation in the paper.
+
+Report metrics per dataset; include confusion matrices and PR‑AUC curves to mirror the paper’s analysis emphasis.
+
+Copilot implementation checklist
+Implement feature computation using TA‑Lib with the exact 40‑indicator list, plus LOG_RETURN, validating shapes and NaN handling.
+
+Implement EEMD denoising on close, compute Sample Entropy per IMF, subtract the highest‑entropy IMF, and cache the filtered series.
+
+Train CAE with contractive penalty, export encoder for online feature extraction, and concatenate with filtered close for model inputs.
+
+Build PLSTM with peephole connections and a Temporal Attention Layer, then train with Adamax and binary cross‑entropy loss using tanh inside the LSTM as per tuned defaults.
+
+Run Bayesian optimization over key hyperparameters, then evaluate metrics and save artifacts (weights, logs, metrics, confusion matrices).
+
+Notes on TA‑Lib usage
+TA‑Lib provides all specified indicators across Overlap, Momentum, Volume, and Price Transform groups used in this pipeline; install the C library first, then the Python wrapper to avoid build errors.
+
+Confirm platform‑specific steps (Homebrew on macOS, source on Linux, Windows binary/VS build) before installing the Python package.
+
+Mathematical references
+Labeling: 
+y
+(
+t
+)
+=
+1
+y(t)=1 if 
+r
+(
+t
++
+1
+)
+>
+r
+(
+t
+)
+r(t+1)>r(t), else 
+0
+0.
+
+CAE objective: 
+L
+C
+A
+E
+=
+∑
+L
+(
+x
+,
+g
+(
+h
+(
+X
+)
+)
+)
++
+λ
+∥
+J
+h
+(
+X
+)
+∥
+F
+2
+L 
+CAE
+ =∑L(x,g(h(X)))+λ∥J 
+h
+ (X)∥ 
+F
+2
+ .
+
+EEMD process and reconstruction: 
+X
+(
+t
+)
+=
+∑
+n
+=
+1
+N
+c
+n
+(
+t
+)
++
+r
+N
+(
+t
+)
+X(t)=∑ 
+n=1
+N
+ c 
+n
+ (t)+r 
+N
+ (t), subtract IMF with highest SaEn.
+
+Reproducibility guidance
+Fix seeds, log exact versions, and save processed datasets to ensure consistent splits and windows; re‑implementations may deviate slightly from reported accuracies due to randomness and library differences.
+
+Provide configuration files for each market with identical preprocessing and model settings to enable like‑for‑like comparisons.
+
