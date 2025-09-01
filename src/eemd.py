@@ -238,8 +238,8 @@ class SampleEntropy:
 class EEMDDenoiser:
     """EEMD-based signal denoising following the paper's methodology."""
     
-    def __init__(self, n_ensembles: int = 100, noise_scale: float = 0.2):
-        self.eemd = EEMD(n_ensembles=n_ensembles, noise_scale=noise_scale)
+    def __init__(self, n_ensembles: int = 20, noise_scale: float = 0.15):
+        self.eemd = EEMD(n_ensembles=n_ensembles, noise_scale=noise_scale, max_imfs=8)
         self.sample_entropy = SampleEntropy()
     
     def denoise(self, signal: np.ndarray) -> Tuple[np.ndarray, dict]:

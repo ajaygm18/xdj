@@ -200,13 +200,18 @@ class TechnicalIndicators:
         # 7. Parabolic SAR (simplified)
         features['SAR'] = self.ema(close_prices, 10)  # Simplified approximation
         
-        # 8. Volume indicators
-        features['AD'] = np.cumsum(((close_prices - low_prices) - (high_prices - close_prices)) / 
-                                  (high_prices - low_prices + 1e-10) * volume)
-        features['OBV'] = np.cumsum(np.where(close_prices > np.roll(close_prices, 1), volume, -volume))
+        # 8. Volume indicators (normalized to avoid extreme values)
+        # Accumulation/Distribution Line (normalized)
+        clv = ((close_prices - low_prices) - (high_prices - close_prices)) / (high_prices - low_prices + 1e-10)
+        ad_raw = np.cumsum(clv * volume)
+        features['AD'] = ad_raw / (np.abs(ad_raw).mean() + 1e-10) * 100  # Normalize to ~[-100, 100]
         
-        # ADOSC (simplified)
-        features['ADOSC'] = features['AD'] - self.sma(features['AD'], 10)
+        # On Balance Volume (normalized) 
+        obv_raw = np.cumsum(np.where(close_prices > np.roll(close_prices, 1), volume, -volume))
+        features['OBV'] = obv_raw / (np.abs(obv_raw).mean() + 1e-10) * 100  # Normalize to ~[-100, 100]
+        
+        # ADOSC (normalized)
+        features['ADOSC'] = (features['AD'] - self.sma(features['AD'], 10)) / 10
         
         # 9. Momentum indicators
         features['MOM'] = close_prices - np.roll(close_prices, 10)
