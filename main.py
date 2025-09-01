@@ -18,14 +18,13 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
 sys.path.insert(0, src_dir)
 
-# Import modules that work without TA-Lib
+# Import modules that work without external dependencies
 from model_plstm_tal import PLSTM_TAL
 from baselines import BaselineModelFactory
 from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
-
-# For TA-Lib and EEMD, we'll implement simplified versions
+from indicators import TechnicalIndicators
 
 
 class SimplifiedPipeline:
@@ -96,8 +95,8 @@ class SimplifiedPipeline:
             'volume': volume
         }, index=dates)
         
-        # Generate simplified technical indicators
-        features_df = self.generate_simple_features(price_df)
+        # Generate technical indicators using proper implementation
+        features_df = self.generate_proper_features(price_df)
         
         # Simulate EEMD filtered prices (simplified)
         filtered_prices = self.simulate_eemd_filtering(price_df['close'])
@@ -106,6 +105,16 @@ class SimplifiedPipeline:
         print(f"Price range: ${close_prices.min():.2f} - ${close_prices.max():.2f}")
         
         return features_df, price_df['close'], filtered_prices
+    
+    def generate_proper_features(self, price_df: pd.DataFrame) -> pd.DataFrame:
+        """Generate proper technical indicators using paper-compliant implementation."""
+        print("Computing 40+ technical indicators as specified in paper...")
+        
+        indicators = TechnicalIndicators()
+        features_df = indicators.compute_features(price_df)
+        
+        print(f"Generated {len(features_df.columns)} paper-compliant technical indicators")
+        return features_df
     
     def generate_simple_features(self, price_df: pd.DataFrame) -> pd.DataFrame:
         """Generate simplified technical indicators without TA-Lib."""

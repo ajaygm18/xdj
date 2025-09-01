@@ -42,10 +42,10 @@ class DataPreprocessor:
         
     def create_labels(self, prices: pd.Series) -> pd.Series:
         """
-        Create binary labels based on price movement.
+        Create binary labels based on price movement direction.
         
-        Label rule: y(t) = 1 if r(t+1) > r(t), else 0
-        where r(t) is the return at time t.
+        Label rule: y(t) = 1 if price(t+1) > price(t) (upward trend), else 0
+        This is the standard labeling for stock market direction prediction.
         
         Args:
             prices: Price series
@@ -53,13 +53,11 @@ class DataPreprocessor:
         Returns:
             Binary labels series
         """
-        # Calculate returns
-        returns = prices.pct_change().dropna()
+        # Create labels: 1 if next price > current price, else 0
+        # This predicts the direction of price movement
+        labels = (prices.shift(-1) > prices).astype(int)
         
-        # Create labels: 1 if next return > current return, else 0
-        labels = (returns.shift(-1) > returns).astype(int)
-        
-        # Drop last value (no future return available)
+        # Drop last value (no future price available)
         labels = labels[:-1]
         
         return labels
