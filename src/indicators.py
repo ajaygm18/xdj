@@ -12,14 +12,15 @@ warnings.filterwarnings('ignore')
 class TechnicalIndicators:
     """Computes technical indicators without external dependencies."""
     
-    # List of exactly 40 technical indicators as specified in the paper
+    # List of all technical indicators as specified in the paper
     INDICATORS = [
         'BBANDS_upper', 'BBANDS_middle', 'BBANDS_lower', 'WMA', 'EMA', 'DEMA', 
         'KAMA', 'MAMA', 'MIDPRICE', 'SAR', 'SMA', 'T3', 'TEMA', 'TRIMA', 
         'AD', 'ADOSC', 'OBV', 'MEDPRICE', 'TYPPRICE', 'WCLPRICE', 'ADX', 
         'ADXR', 'APO', 'AROON_down', 'AROON_up', 'AROONOSC', 'BOP', 'CCI', 
         'CMO', 'DX', 'MACD', 'MACD_signal', 'MACD_hist', 'MFI', 'MINUS_DI', 
-        'MOM', 'PLUS_DI', 'PPO', 'ROC', 'RSI'
+        'MOM', 'PLUS_DI', 'PPO', 'ROC', 'RSI', 'STOCH_k', 'STOCH_d', 
+        'STOCHRSI', 'ULTOSC', 'WILLR', 'LOG_RETURN'
     ]
     
     def __init__(self):
