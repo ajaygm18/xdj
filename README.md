@@ -150,43 +150,50 @@ You can modify `config.json` or create your own configuration file:
 
 ## Results
 
-### Model Performance (Fast Configuration)
+### Latest Model Performance (Full Configuration - Real S&P 500 Data)
+
+**Dataset**: S&P 500 (^GSPC) from 2015-09-08 to 2025-08-29 (2,510 trading days)
+**Features**: 46 technical indicators + EEMD filtered prices
+**Training Configuration**: Full optimization with 300 epochs
 
 | Model | Accuracy | Precision | Recall | F1-Score | AUC-ROC | PR-AUC | MCC |
 |-------|----------|-----------|---------|----------|---------|--------|-----|
-| **LSTM** | **72.19%** | **71.93%** | **68.72%** | **70.29%** | **80.75%** | **82.32%** | **44.22%** |
-| **SVM** | **72.19%** | 74.51% | 63.69% | 68.67% | 77.46% | 78.40% | 44.39% |
-| **Random Forest** | 71.12% | 73.20% | 62.57% | 67.47% | 75.16% | 73.43% | 42.21% |
-| CNN | 51.07% | 45.83% | 12.29% | 19.38% | 45.34% | 46.08% | -1.56% |
-| PLSTM-TAL | 49.47% | 43.24% | 17.88% | 25.30% | 45.36% | 46.14% | -4.59% |
+| **LSTM** | **74.06%** | **75.31%** | **68.16%** | **71.55%** | **80.57%** | **81.75%** | **48.03%** |
+| **PLSTM-TAL** | **72.73%** | **77.30%** | **60.89%** | **68.13%** | **81.43%** | **82.09%** | **45.85%** |
+| **SVM** | **71.12%** | **75.18%** | **59.22%** | **66.25%** | **76.13%** | **77.45%** | **42.54%** |
+| **Random Forest** | **68.45%** | **70.20%** | **59.22%** | **64.24%** | **75.88%** | **75.16%** | **36.80%** |
+| CNN | 48.93% | 38.46% | 11.17% | 17.32% | 46.21% | 45.83% | -7.56% |
 
-### Key Findings
+### Key Findings (Full Pipeline Results)
 
-1. **LSTM Baseline Performance**: Achieved the highest accuracy (72.19%) with excellent AUC-ROC (80.75%)
-2. **SVM Strong Performance**: Competitive results with highest precision (74.51%)
-3. **PLSTM-TAL**: Underperformed in this configuration, likely due to:
-   - Reduced training epochs (100 vs 300)
-   - Smaller ensemble size (20 vs 100)
-   - Need for hyperparameter tuning
+1. **LSTM Achieves Best Overall Performance**: 74.06% accuracy with excellent balance across all metrics
+2. **PLSTM-TAL Strong Performance**: 72.73% accuracy with highest precision (77.30%) and superior AUC-ROC (81.43%)
+3. **Consistent Strong Results**: Top 3 models (LSTM, PLSTM-TAL, SVM) all achieve >70% accuracy
+4. **Robust Feature Engineering**: 46 technical indicators + EEMD denoising provide strong predictive power
+5. **Real Market Validation**: Results validated on 10 years of actual S&P 500 data
+
+### Comparative Analysis
+
+**Fast vs Full Configuration:**
+- **LSTM**: Improved from 72.19% → 74.06% accuracy (+1.87%)
+- **PLSTM-TAL**: Dramatically improved from 49.47% → 72.73% accuracy (+23.26%)
+- **SVM**: Maintained consistency around 71-72% accuracy
+- **Random Forest**: Slight decrease from 71.12% → 68.45% (-2.67%)
 
 ### Visualizations
 
-![Model Comparison](results_fast/model_comparison.png)
+![Model Comparison](model_comparison.png)
 
-#### ROC Curves
-- **LSTM**: [ROC Curve](results_fast/lstm_roc_curve.png) - AUC: 80.75%
-- **SVM**: [ROC Curve](results_fast/svm_roc_curve.png) - AUC: 77.46%
-- **Random Forest**: [ROC Curve](results_fast/random_forest_roc_curve.png) - AUC: 75.16%
+#### ROC Curves (Latest Results)
+- **LSTM**: ![LSTM ROC](lstm_roc_curve.png) - AUC: 80.57%
+- **PLSTM-TAL**: ![PLSTM-TAL ROC](plstm-tal_roc_curve.png) - AUC: 81.43%
+- **SVM**: ![SVM ROC](svm_roc_curve.png) - AUC: 76.13%
+- **Random Forest**: ![Random Forest ROC](random_forest_roc_curve.png) - AUC: 75.88%
 
-#### Precision-Recall Curves
-- **LSTM**: [PR Curve](results_fast/lstm_pr_curve.png) - PR-AUC: 82.32%
-- **SVM**: [PR Curve](results_fast/svm_pr_curve.png) - PR-AUC: 78.40%
-- **Random Forest**: [PR Curve](results_fast/random_forest_pr_curve.png) - PR-AUC: 73.43%
-
-#### Confusion Matrices
-- **LSTM**: [Confusion Matrix](results_fast/lstm_confusion_matrix.png)
-- **SVM**: [Confusion Matrix](results_fast/svm_confusion_matrix.png)
-- **Random Forest**: [Confusion Matrix](results_fast/random_forest_confusion_matrix.png)
+#### Complete Results Directory
+All detailed results including confusion matrices, PR curves, and model weights are available in:
+- **Full Results**: `results/` directory (latest run)
+- **Fast Results**: `results_fast/` directory (previous run)
 
 ## Technical Implementation Details
 
@@ -262,6 +269,54 @@ All 40 indicators from the paper are implemented:
 - `window_length`: Sequence length (10-30)
 - `batch_size`: Mini-batch size (16-64)
 - `patience`: Early stopping patience (20-50)
+
+## Saved Models and Artifacts
+
+### Model Weights and Training Artifacts
+
+The full pipeline execution saves all trained models and evaluation results:
+
+**Model Weights (`results/` directory):**
+- `cae_model.pth` - Contractive Autoencoder weights
+- `plstm-tal_weights.pth` - PLSTM-TAL model weights  
+- `lstm_weights.pth` - LSTM baseline weights
+- `cnn_weights.pth` - CNN baseline weights
+- Random Forest and SVM models are saved as pickle files
+
+**Performance Metrics:**
+- `metrics.json` - Detailed metrics for all models (accuracy, precision, recall, F1, AUC-ROC, PR-AUC, MCC)
+- `model_comparison.csv` - Performance comparison table
+- `data_info.json` - Dataset information and preprocessing details
+
+**Visualizations:**
+- `model_comparison.png` - Overall model performance comparison
+- `{model}_roc_curve.png` - ROC curves for each model
+- `{model}_pr_curve.png` - Precision-Recall curves for each model  
+- `{model}_confusion_matrix.png` - Confusion matrices for each model
+
+### Model Loading and Inference
+
+To load and use trained models:
+
+```python
+import torch
+from src.model_plstm_tal import PLSTM_TAL
+
+# Load PLSTM-TAL model
+model = PLSTM_TAL(input_size=33, hidden_size=128, num_layers=2)
+model.load_state_dict(torch.load('results/plstm-tal_weights.pth'))
+model.eval()
+
+# Load LSTM baseline
+from src.baselines import BaselineModelFactory
+lstm_model = BaselineModelFactory.create_model('lstm', input_size=33, hidden_size=64)
+lstm_model.load_state_dict(torch.load('results/lstm_weights.pth'))
+lstm_model.eval()
+
+# Use for prediction
+with torch.no_grad():
+    predictions = model(X_test)
+```
 
 ## Troubleshooting
 
