@@ -229,22 +229,25 @@ class RandomForestClassifier_:
     """Random Forest baseline classifier."""
     
     def __init__(self, n_estimators: int = 100, max_depth: int = None, 
-                 random_state: int = 42):
+                 min_samples_split: int = 2, random_state: int = 42):
         """
         Initialize Random Forest classifier.
         
         Args:
             n_estimators: Number of trees
             max_depth: Maximum tree depth
+            min_samples_split: Minimum samples required to split a node
             random_state: Random seed
         """
         self.n_estimators = n_estimators
         self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
         self.random_state = random_state
         
         self.model = RandomForestClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
+            min_samples_split=min_samples_split,
             random_state=random_state,
             n_jobs=-1
         )

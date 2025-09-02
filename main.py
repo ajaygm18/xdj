@@ -44,6 +44,43 @@ class SimplifiedPipeline:
         # Initialize components
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
         
+        # Import data loader
+        from data_loader import YFinanceDataLoader
+        self.data_loader = YFinanceDataLoader()
+        
+    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 15) -> tuple:
+        """Load real market data from Yahoo Finance."""
+        print(f"Loading real market data for {symbol} ({years} years)...")
+        
+        # Calculate date range
+        from datetime import datetime, timedelta
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=years * 365)
+        
+        # Download data
+        self.data_loader.symbol = symbol
+        raw_data = self.data_loader.download_data(
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d")
+        )
+        
+        # Get OHLCV data
+        price_df = self.data_loader.get_ohlcv_data()
+        
+        # Generate technical indicators using proper implementation
+        features_df = self.generate_proper_features(price_df)
+        
+        # Apply proper EEMD filtering with balanced parameters
+        print("Applying optimized EEMD filtering...")
+        denoiser = EEMDDenoiser(n_ensembles=50, noise_scale=0.2, w=7)  # Reduced from 100 to 50
+        filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
+        
+        print(f"Real data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
+        print(f"Price range: ${price_df['close'].min():.2f} - ${price_df['close'].max():.2f}")
+        print(f"EEMD metadata: {eemd_metadata}")
+        
+        return features_df, price_df['close'], filtered_prices
+        
     def generate_synthetic_data(self, n_samples: int = 4000) -> tuple:
         """Generate realistic synthetic stock market data."""
         print("Generating synthetic S&P 500 data...")
@@ -180,61 +217,14 @@ class SimplifiedPipeline:
         return features_df
     
     def apply_eemd_filtering(self, prices: pd.Series) -> pd.Series:
-        """Apply efficient EEMD-like filtering following paper methodology."""
-        print("Applying EEMD-like filtering with high-frequency noise removal...")
+        """Apply proper EEMD filtering using enhanced algorithm."""
+        print("Applying proper EEMD filtering with full algorithm implementation...")
         
-        # For computational efficiency, use a multi-scale decomposition approach
-        # that approximates EEMD but is much faster
+        # Use the optimized EEMD denoiser with fewer ensembles for efficiency
+        denoiser = EEMDDenoiser(n_ensembles=50, noise_scale=0.2, w=7)  # Balanced parameters
+        filtered_prices, metadata = denoiser.process_price_series(prices)
         
-        # 1. Apply multiple smoothing scales to approximate IMF decomposition
-        scales = [3, 7, 15, 31]  # Different smoothing windows
-        components = []
-        
-        signal = prices.values
-        remaining = signal.copy()
-        
-        for scale in scales:
-            # Extract component at this scale using rolling median (robust to outliers)
-            component = pd.Series(remaining).rolling(window=scale, center=True).median()
-            component = component.fillna(method='bfill').fillna(method='ffill')
-            
-            # Calculate the detail (what we remove at this scale)
-            detail = remaining - component.values
-            components.append(detail)
-            
-            # Update remaining signal
-            remaining = component.values
-        
-        # Add the final residue
-        components.append(remaining)
-        
-        # 2. Calculate complexity measure for each component (approximating Sample Entropy)
-        complexities = []
-        for i, comp in enumerate(components[:-1]):  # Skip residue
-            # Use standard deviation and zero-crossings as complexity proxy
-            std_complexity = np.std(comp)
-            zero_crossings = np.sum(np.diff(np.sign(comp)) != 0)
-            complexity = std_complexity * (1 + zero_crossings / len(comp))
-            complexities.append(complexity)
-            print(f"Component {i+1}: Complexity = {complexity:.4f}")
-        
-        # 3. Find highest complexity component (approximating highest Sample Entropy IMF)
-        if complexities:
-            max_complexity_idx = np.argmax(complexities)
-            noise_component = components[max_complexity_idx]
-            
-            print(f"Removing component {max_complexity_idx + 1} with highest complexity ({complexities[max_complexity_idx]:.4f})")
-            
-            # 4. Filter signal: x_filtered(t) = x(t) - highest_complexity_component(t)
-            filtered_signal = signal - noise_component
-        else:
-            filtered_signal = signal
-            print("No components found, returning original signal")
-        
-        # Convert back to pandas Series
-        filtered_prices = pd.Series(filtered_signal, index=prices.index)
-        
-        print(f"EEMD-like filtering completed")
+        print(f"Enhanced EEMD filtering completed with {metadata['n_imfs']} IMFs")
         return filtered_prices
     
     def simulate_eemd_filtering(self, prices: pd.Series) -> pd.Series:
@@ -251,36 +241,39 @@ class SimplifiedPipeline:
         return filtered
     
     def run_experiment(self):
-        """Run the complete experiment pipeline."""
+        """Run the complete experiment pipeline with real data and optimized parameters."""
         print("=" * 60)
-        print("PLSTM-TAL Stock Market Prediction Pipeline")
+        print("PLSTM-TAL Stock Market Prediction Pipeline - REAL DATA")
         print("=" * 60)
         
-        # Step 1: Generate/Load Data
-        features_df, prices, filtered_prices = self.generate_synthetic_data()
+        # Step 1: Load Real Market Data (reduced timeframe for efficiency)
+        symbol = self.config.get('symbol', '^GSPC')
+        years = self.config.get('data_years', 10)  # Reduced from 15 to 10 years
+        features_df, prices, filtered_prices = self.load_real_market_data(symbol, years)
         
-        # Step 2: Train CAE for Feature Extraction
-        print("\n--- Training Contractive Autoencoder ---")
+        # Step 2: Train CAE for Feature Extraction with optimized parameters
+        print("\n--- Training Contractive Autoencoder (Optimized) ---")
         cae_config = self.config.get('cae', {})
         cae = CAEFeatureExtractor(
-            hidden_dim=cae_config.get('hidden_dim', 64),
-            encoding_dim=cae_config.get('encoding_dim', 16),
-            dropout=cae_config.get('dropout', 0.1),
-            lambda_reg=cae_config.get('lambda_reg', 1e-4)
+            hidden_dim=cae_config.get('hidden_dim', 128),  # Increased from 64
+            encoding_dim=cae_config.get('encoding_dim', 32),  # Increased from 16
+            dropout=cae_config.get('dropout', 0.2),  # Increased from 0.1
+            lambda_reg=cae_config.get('lambda_reg', 5e-4)  # Increased from 1e-4
         )
         
         cae_history = cae.train(
             features_df, 
-            epochs=cae_config.get('epochs', 50),
-            batch_size=cae_config.get('batch_size', 64),
+            epochs=cae_config.get('epochs', 200),  # Increased from 50
+            batch_size=cae_config.get('batch_size', 128),  # Increased from 64
+            learning_rate=cae_config.get('learning_rate', 5e-4),  # Decreased for stability
             verbose=True
         )
         
         # Step 3: Prepare Data for Model Training
-        print("\n--- Preparing Training Data ---")
+        print("\n--- Preparing Training Data (Optimized) ---")
         train_config = self.config.get('training', {})
         preprocessor = DataPreprocessor(
-            window_length=train_config.get('window_length', 20),
+            window_length=train_config.get('window_length', 30),  # Increased from 20
             step_size=train_config.get('step_size', 1)
         )
         
@@ -288,94 +281,98 @@ class SimplifiedPipeline:
             features_df, prices, cae, filtered_prices
         )
         
-        # Train/validation/test split (60/20/20)
+        # Train/validation/test split (70/15/15 for more training data)
         from sklearn.model_selection import train_test_split
         
         X_temp, X_test, y_temp, y_test = train_test_split(
-            X_sequences, y_labels, test_size=0.2, random_state=42, stratify=y_labels
+            X_sequences, y_labels, test_size=0.15, random_state=42, stratify=y_labels
         )
         X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp  # 0.25 of 0.8 = 0.2
+            X_temp, y_temp, test_size=0.176, random_state=42, stratify=y_temp  # 0.176 of 0.85 ≈ 0.15
         )
         
-        print(f"Data splits:")
+        print(f"Data splits (optimized):")
         print(f"  Training: {X_train.shape}")
         print(f"  Validation: {X_val.shape}")
         print(f"  Test: {X_test.shape}")
         
-        # Step 4: Train Models
-        print("\n--- Training Models ---")
+        # Step 4: Train Models with Optimized Hyperparameters
+        print("\n--- Training Models (Full Optimization) ---")
         models = {}
         results = {}
         
         input_size = X_train.shape[2]
         
-        # PLSTM-TAL (Main model)
-        print("\nTraining PLSTM-TAL...")
+        # PLSTM-TAL (Main model) - Optimized Architecture
+        print("\nTraining PLSTM-TAL with optimized parameters...")
         plstm_config = self.config.get('plstm_tal', {})
         plstm_model = PLSTM_TAL(
             input_size=input_size,
-            hidden_size=plstm_config.get('hidden_size', 64),
-            num_layers=plstm_config.get('num_layers', 1),
-            dropout=plstm_config.get('dropout', 0.1),
+            hidden_size=plstm_config.get('hidden_size', 128),  # Increased from 64
+            num_layers=plstm_config.get('num_layers', 2),  # Increased from 1
+            dropout=plstm_config.get('dropout', 0.3),  # Increased from 0.1
             activation='tanh'
         )
         
         plstm_trainer = ModelTrainer(plstm_model)
         plstm_history = plstm_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=train_config.get('epochs', 100),
-            batch_size=train_config.get('batch_size', 32),
-            learning_rate=train_config.get('learning_rate', 1e-3),
+            epochs=train_config.get('epochs', 300),  # Increased from 100
+            batch_size=train_config.get('batch_size', 64),  # Increased from 32
+            learning_rate=train_config.get('learning_rate', 1e-4),  # Decreased for stability
             optimizer_name='adamax',
-            early_stopping_patience=train_config.get('patience', 10)
+            early_stopping_patience=train_config.get('patience', 30)  # Increased patience
         )
         models['PLSTM-TAL'] = plstm_model
         
-        # Baseline Models
+        # Baseline Models with Optimized Parameters
         baseline_config = self.config.get('baselines', {})
         
-        # CNN
-        print("\nTraining CNN baseline...")
+        # CNN - Enhanced Architecture
+        print("\nTraining CNN baseline (optimized)...")
         cnn_model = BaselineModelFactory.create_model(
             'cnn', input_size, X_train.shape[1],
-            num_filters=baseline_config.get('cnn_filters', 32),
-            dropout=baseline_config.get('dropout', 0.1)
+            num_filters=baseline_config.get('cnn_filters', 64),  # Increased from 32
+            dropout=baseline_config.get('dropout', 0.3)  # Increased from 0.1
         )
         cnn_trainer = ModelTrainer(cnn_model)
         cnn_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=baseline_config.get('epochs', 50),
-            batch_size=32, learning_rate=1e-3, optimizer_name='adam'
+            epochs=baseline_config.get('epochs', 200),  # Increased from 50
+            batch_size=64, learning_rate=5e-4, optimizer_name='adam'  # Optimized
         )
         models['CNN'] = cnn_model
         
-        # LSTM  
-        print("\nTraining LSTM baseline...")
+        # LSTM - Enhanced Architecture
+        print("\nTraining LSTM baseline (optimized)...")
         lstm_model = BaselineModelFactory.create_model(
             'lstm', input_size,
-            hidden_size=baseline_config.get('lstm_hidden', 32),
-            dropout=baseline_config.get('dropout', 0.1)
+            hidden_size=baseline_config.get('lstm_hidden', 64),  # Increased from 32
+            dropout=baseline_config.get('dropout', 0.3)  # Increased from 0.1
         )
         lstm_trainer = ModelTrainer(lstm_model)
         lstm_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=baseline_config.get('epochs', 50),
-            batch_size=32, learning_rate=1e-3, optimizer_name='adam'
+            epochs=baseline_config.get('epochs', 200),  # Increased from 50
+            batch_size=64, learning_rate=5e-4, optimizer_name='adam'  # Optimized
         )
         models['LSTM'] = lstm_model
         
-        # SVM
-        print("\nTraining SVM baseline...")
-        svm_model = BaselineModelFactory.create_model('svm', input_size)
+        # SVM - Optimized Parameters
+        print("\nTraining SVM baseline (optimized)...")
+        svm_model = BaselineModelFactory.create_model('svm', input_size, 
+                                                     C=baseline_config.get('svm_C', 10.0),  # Increased regularization
+                                                     gamma=baseline_config.get('svm_gamma', 'scale'))
         svm_model.fit(X_train, y_train)
         models['SVM'] = svm_model
         
-        # Random Forest
-        print("\nTraining Random Forest baseline...")
+        # Random Forest - Optimized Parameters
+        print("\nTraining Random Forest baseline (optimized)...")
         rf_model = BaselineModelFactory.create_model(
             'rf', input_size,
-            n_estimators=baseline_config.get('rf_trees', 100)
+            n_estimators=baseline_config.get('rf_trees', 200),  # Increased from 100
+            max_depth=baseline_config.get('rf_depth', 15),  # Added depth control
+            min_samples_split=baseline_config.get('rf_min_split', 10)  # Added split control
         )
         rf_model.fit(X_train, y_train)
         models['Random Forest'] = rf_model
@@ -421,6 +418,27 @@ class SimplifiedPipeline:
         # Save CAE model
         cae.save_model(f"{self.results_dir}/cae_model.pth")
         
+        # Save data information
+        data_info = {
+            'symbol': symbol,
+            'years': years,
+            'total_samples': len(features_df),
+            'features_count': len(features_df.columns),
+            'data_range': {
+                'start': str(features_df.index[0].date()),
+                'end': str(features_df.index[-1].date())
+            },
+            'price_statistics': {
+                'min': float(prices.min()),
+                'max': float(prices.max()),
+                'mean': float(prices.mean()),
+                'std': float(prices.std())
+            }
+        }
+        
+        with open(f"{self.results_dir}/data_info.json", 'w') as f:
+            json.dump(data_info, f, indent=2)
+        
         print(f"\nResults saved to {self.results_dir}/")
         print("Pipeline completed successfully!")
         
@@ -437,37 +455,44 @@ def main():
     
     args = parser.parse_args()
     
-    # Default configuration
+    # Default configuration - Optimized for target accuracy
     default_config = {
         "data_dir": "data",
         "results_dir": args.output,
+        "symbol": "^GSPC",
+        "data_years": 10,
         "cae": {
-            "hidden_dim": 64,
-            "encoding_dim": 16,
-            "dropout": 0.1,
-            "lambda_reg": 1e-4,
-            "epochs": 50,
-            "batch_size": 64
+            "hidden_dim": 128,
+            "encoding_dim": 32,
+            "dropout": 0.2,
+            "lambda_reg": 5e-4,
+            "epochs": 200,
+            "batch_size": 128,
+            "learning_rate": 5e-4
         },
         "training": {
-            "window_length": 20,
+            "window_length": 30,
             "step_size": 1,
-            "epochs": 100,
-            "batch_size": 32,
-            "learning_rate": 1e-3,
-            "patience": 10
+            "epochs": 300,
+            "batch_size": 64,
+            "learning_rate": 1e-4,
+            "patience": 30
         },
         "plstm_tal": {
-            "hidden_size": 64,
-            "num_layers": 1,
-            "dropout": 0.1
+            "hidden_size": 128,
+            "num_layers": 2,
+            "dropout": 0.3
         },
         "baselines": {
-            "epochs": 50,
-            "dropout": 0.1,
-            "cnn_filters": 32,
-            "lstm_hidden": 32,
-            "rf_trees": 100
+            "epochs": 200,
+            "dropout": 0.3,
+            "cnn_filters": 64,
+            "lstm_hidden": 64,
+            "rf_trees": 200,
+            "rf_depth": 15,
+            "rf_min_split": 10,
+            "svm_C": 10.0,
+            "svm_gamma": "scale"
         }
     }
     
