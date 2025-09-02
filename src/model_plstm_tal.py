@@ -280,10 +280,16 @@ class PLSTM_TAL(nn.Module):
     """
     PLSTM-TAL: Peephole LSTM with Temporal Attention Layer.
     
-    The main model architecture from the paper combining:
+    Implements the exact architecture from the paper diagram:
     1. Peephole LSTM for sequence modeling
     2. Temporal Attention Layer for weighted feature aggregation
-    3. Dense layers for final classification
+    3. Batch Normalization for stable training
+    4. Flatten layer for dimension consistency
+    5. Multiple Dense layers with dropout for classification
+    
+    Architecture Flow (following diagram):
+    Input -> Peephole LSTM -> Temporal Attention -> Batch Norm -> 
+    Flatten -> Dense -> Dropout -> Dense -> Dropout -> Output
     """
     
     def __init__(self, input_size: int, hidden_size: int = 64, num_layers: int = 1,
@@ -329,15 +335,27 @@ class PLSTM_TAL(nn.Module):
             attention_dim=attention_dim
         )
         
-        # Classification head
+        # Classification head - Following exact architecture from diagram
+        # The diagram shows: Batch Norm -> Flatten -> Dense -> Dropout -> Dense -> Dropout -> Output
+        self.batch_norm = nn.BatchNorm1d(lstm_output_size)
+        
+        # Flatten layer (context vector is already flattened, but keeping for architecture compliance)
+        self.flatten = nn.Flatten()
+        
+        # Multiple dense layers as shown in diagram
         self.classifier = nn.Sequential(
+            nn.Linear(lstm_output_size, lstm_output_size // 2),  # First dense layer
+            nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(lstm_output_size, 1)  # Binary classification
+            nn.Linear(lstm_output_size // 2, lstm_output_size // 4),  # Second dense layer  
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(lstm_output_size // 4, 1),  # Output layer for binary classification
         )
         
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Forward pass through PLSTM-TAL.
+        Forward pass through PLSTM-TAL following exact architecture from diagram.
         
         Args:
             x: Input sequences (batch_size, seq_len, input_size)
@@ -354,7 +372,13 @@ class PLSTM_TAL(nn.Module):
         # Apply Temporal Attention
         context_vector, attention_weights = self.temporal_attention(lstm_output)
         
-        # Classification
+        # Apply Batch Normalization as shown in diagram
+        context_vector = self.batch_norm(context_vector)
+        
+        # Flatten (already flat but following diagram)
+        context_vector = self.flatten(context_vector)
+        
+        # Classification through multiple dense layers
         logits = self.classifier(context_vector).squeeze(-1)  # (batch_size,)
         
         return logits, attention_weights
