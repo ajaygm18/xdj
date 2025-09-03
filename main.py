@@ -24,12 +24,19 @@ from baselines import BaselineModelFactory
 from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
-from indicators import TechnicalIndicators
 from eemd import EEMDDenoiser
 
+# Import both indicator implementations
+from indicators import TechnicalIndicators  # Manual implementation fallback
+try:
+    from indicators_talib import TechnicalIndicatorsTA  # Paper-compliant TA-Lib implementation
+    TALIB_INDICATORS_AVAILABLE = True
+except ImportError:
+    TALIB_INDICATORS_AVAILABLE = False
 
-class SimplifiedPipeline:
-    """Simplified pipeline that works without external dependencies."""
+
+class PaperCompliantPipeline:
+    """Paper-compliant pipeline that follows the research paper specifications exactly."""
     
     def __init__(self, config: dict):
         """Initialize pipeline with configuration."""
@@ -48,20 +55,29 @@ class SimplifiedPipeline:
         from data_loader import YFinanceDataLoader
         self.data_loader = YFinanceDataLoader()
         
-    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 15) -> tuple:
+    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 17) -> tuple:
         """Load real market data from Yahoo Finance."""
-        print(f"Loading real market data for {symbol} ({years} years)...")
+        print(f"Loading real market data for {symbol}...")
         
-        # Calculate date range
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=years * 365)
+        # Use paper timeframe if specified in config
+        if self.config.get('use_paper_timeframe', False):
+            start_date = self.config.get('start_date', '2005-01-01')
+            end_date = self.config.get('end_date', '2022-03-31')
+            print(f"Using paper-compliant timeframe: {start_date} to {end_date}")
+        else:
+            # Calculate date range based on years
+            from datetime import datetime, timedelta
+            end_date_dt = datetime.now()
+            start_date_dt = end_date_dt - timedelta(days=years * 365)
+            start_date = start_date_dt.strftime("%Y-%m-%d")
+            end_date = end_date_dt.strftime("%Y-%m-%d")
+            print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
         # Download data
         self.data_loader.symbol = symbol
         raw_data = self.data_loader.download_data(
-            start_date=start_date.strftime("%Y-%m-%d"),
-            end_date=end_date.strftime("%Y-%m-%d")
+            start_date=start_date,
+            end_date=end_date
         )
         
         # Get OHLCV data
@@ -70,9 +86,14 @@ class SimplifiedPipeline:
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)
         
-        # Apply proper EEMD filtering with balanced parameters
-        print("Applying optimized EEMD filtering...")
-        denoiser = EEMDDenoiser(n_ensembles=50, noise_scale=0.2, w=7)  # Reduced from 100 to 50
+        # Apply proper EEMD filtering with paper-compliant parameters
+        print("Applying paper-compliant EEMD filtering...")
+        eemd_config = self.config.get('eemd', {})
+        denoiser = EEMDDenoiser(
+            n_ensembles=eemd_config.get('n_ensembles', 100), 
+            noise_scale=eemd_config.get('noise_scale', 0.2), 
+            w=eemd_config.get('w', 7)
+        )
         filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
         
         print(f"Real data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
@@ -145,13 +166,20 @@ class SimplifiedPipeline:
         return features_df, price_df['close'], filtered_prices
     
     def generate_proper_features(self, price_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate proper technical indicators using paper-compliant implementation."""
-        print("Computing 40+ technical indicators as specified in paper...")
+        """Generate proper technical indicators using paper-compliant TA-Lib implementation."""
         
-        indicators = TechnicalIndicators()
-        features_df = indicators.compute_features(price_df)
+        # Use TA-Lib implementation if available (paper-compliant)
+        if TALIB_INDICATORS_AVAILABLE and self.config.get('use_exact_40_indicators', True):
+            print("Computing 40+ technical indicators using TA-Lib (paper-compliant)...")
+            indicators = TechnicalIndicatorsTA()
+            features_df = indicators.compute_features(price_df)
+            print(f"✓ Generated {len(features_df.columns)} TA-Lib paper-compliant indicators")
+        else:
+            print("Computing 40+ technical indicators using manual calculations (fallback)...")
+            indicators = TechnicalIndicators()
+            features_df = indicators.compute_features(price_df)
+            print(f"Generated {len(features_df.columns)} manual technical indicators")
         
-        print(f"Generated {len(features_df.columns)} paper-compliant technical indicators")
         return features_df
     
     def generate_simple_features(self, price_df: pd.DataFrame) -> pd.DataFrame:
@@ -241,39 +269,38 @@ class SimplifiedPipeline:
         return filtered
     
     def run_experiment(self):
-        """Run the complete experiment pipeline with real data and optimized parameters."""
+        """Run the complete experiment pipeline with paper-compliant parameters."""
         print("=" * 60)
-        print("PLSTM-TAL Stock Market Prediction Pipeline - REAL DATA")
+        print("PLSTM-TAL Stock Market Prediction Pipeline - PAPER COMPLIANT")
         print("=" * 60)
         
-        # Step 1: Load Real Market Data (reduced timeframe for efficiency)
+        # Step 1: Load Real Market Data (paper timeframe)
         symbol = self.config.get('symbol', '^GSPC')
-        years = self.config.get('data_years', 10)  # Reduced from 15 to 10 years
-        features_df, prices, filtered_prices = self.load_real_market_data(symbol, years)
+        features_df, prices, filtered_prices = self.load_real_market_data(symbol)
         
-        # Step 2: Train CAE for Feature Extraction with optimized parameters
-        print("\n--- Training Contractive Autoencoder (Optimized) ---")
+        # Step 2: Train CAE for Feature Extraction - Paper-compliant
+        print("\n--- Training Contractive Autoencoder (Paper-compliant) ---")
         cae_config = self.config.get('cae', {})
         cae = CAEFeatureExtractor(
-            hidden_dim=cae_config.get('hidden_dim', 128),  # Increased from 64
-            encoding_dim=cae_config.get('encoding_dim', 32),  # Increased from 16
-            dropout=cae_config.get('dropout', 0.2),  # Increased from 0.1
-            lambda_reg=cae_config.get('lambda_reg', 5e-4)  # Increased from 1e-4
+            hidden_dim=cae_config.get('hidden_dim', 64),
+            encoding_dim=cae_config.get('encoding_dim', 16),
+            dropout=cae_config.get('dropout', 0.1),
+            lambda_reg=cae_config.get('lambda_reg', 1e-4)
         )
         
         cae_history = cae.train(
             features_df, 
-            epochs=cae_config.get('epochs', 200),  # Increased from 50
-            batch_size=cae_config.get('batch_size', 128),  # Increased from 64
-            learning_rate=cae_config.get('learning_rate', 5e-4),  # Decreased for stability
+            epochs=cae_config.get('epochs', 100),
+            batch_size=cae_config.get('batch_size', 32),
+            learning_rate=cae_config.get('learning_rate', 1e-3),
             verbose=True
         )
         
         # Step 3: Prepare Data for Model Training
-        print("\n--- Preparing Training Data (Optimized) ---")
+        print("\n--- Preparing Training Data (Paper-compliant) ---")
         train_config = self.config.get('training', {})
         preprocessor = DataPreprocessor(
-            window_length=train_config.get('window_length', 30),  # Increased from 20
+            window_length=train_config.get('window_length', 20),  # Paper-compliant
             step_size=train_config.get('step_size', 1)
         )
         
@@ -281,7 +308,7 @@ class SimplifiedPipeline:
             features_df, prices, cae, filtered_prices
         )
         
-        # Train/validation/test split (70/15/15 for more training data)
+        # Train/validation/test split (70/15/15)
         from sklearn.model_selection import train_test_split
         
         X_temp, X_test, y_temp, y_test = train_test_split(
@@ -291,7 +318,7 @@ class SimplifiedPipeline:
             X_temp, y_temp, test_size=0.176, random_state=42, stratify=y_temp  # 0.176 of 0.85 ≈ 0.15
         )
         
-        print(f"Data splits (optimized):")
+        print(f"Data splits (paper-compliant):")
         print(f"  Training: {X_train.shape}")
         print(f"  Validation: {X_val.shape}")
         print(f"  Test: {X_test.shape}")
@@ -303,76 +330,80 @@ class SimplifiedPipeline:
         
         input_size = X_train.shape[2]
         
-        # PLSTM-TAL (Main model) - Optimized Architecture
-        print("\nTraining PLSTM-TAL with optimized parameters...")
+        # PLSTM-TAL (Main model) - Paper-compliant
+        print("\nTraining PLSTM-TAL with paper-compliant parameters...")
         plstm_config = self.config.get('plstm_tal', {})
         plstm_model = PLSTM_TAL(
             input_size=input_size,
-            hidden_size=plstm_config.get('hidden_size', 128),  # Increased from 64
-            num_layers=plstm_config.get('num_layers', 2),  # Increased from 1
-            dropout=plstm_config.get('dropout', 0.3),  # Increased from 0.1
-            activation='tanh'
+            hidden_size=plstm_config.get('hidden_size', 64),  # Paper-compliant: Units=64
+            num_layers=plstm_config.get('num_layers', 1),  # Paper-compliant
+            dropout=plstm_config.get('dropout', 0.1),  # Paper-compliant
+            activation=plstm_config.get('activation', 'tanh')  # Paper-compliant
         )
         
         plstm_trainer = ModelTrainer(plstm_model)
         plstm_history = plstm_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=train_config.get('epochs', 300),  # Increased from 100
-            batch_size=train_config.get('batch_size', 64),  # Increased from 32
-            learning_rate=train_config.get('learning_rate', 1e-4),  # Decreased for stability
-            optimizer_name='adamax',
-            early_stopping_patience=train_config.get('patience', 30)  # Increased patience
+            epochs=train_config.get('epochs', 100),
+            batch_size=train_config.get('batch_size', 32),
+            learning_rate=train_config.get('learning_rate', 1e-3),
+            optimizer_name=train_config.get('optimizer', 'adamax'),  # Paper-compliant
+            early_stopping_patience=train_config.get('patience', 20)
         )
         models['PLSTM-TAL'] = plstm_model
         
-        # Baseline Models with Optimized Parameters
+        # Baseline Models - Paper-compliant
         baseline_config = self.config.get('baselines', {})
         
-        # CNN - Enhanced Architecture
-        print("\nTraining CNN baseline (optimized)...")
+        # CNN - Paper-compliant
+        print("\nTraining CNN baseline (paper-compliant)...")
         cnn_model = BaselineModelFactory.create_model(
             'cnn', input_size, X_train.shape[1],
-            num_filters=baseline_config.get('cnn_filters', 64),  # Increased from 32
-            dropout=baseline_config.get('dropout', 0.3)  # Increased from 0.1
+            num_filters=baseline_config.get('cnn_filters', 32),
+            dropout=baseline_config.get('dropout', 0.1)
         )
         cnn_trainer = ModelTrainer(cnn_model)
         cnn_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=baseline_config.get('epochs', 200),  # Increased from 50
-            batch_size=64, learning_rate=5e-4, optimizer_name='adam'  # Optimized
+            epochs=baseline_config.get('epochs', 100),
+            batch_size=train_config.get('batch_size', 32), 
+            learning_rate=train_config.get('learning_rate', 1e-3), 
+            optimizer_name=train_config.get('optimizer', 'adamax')
         )
         models['CNN'] = cnn_model
         
-        # LSTM - Enhanced Architecture
-        print("\nTraining LSTM baseline (optimized)...")
+        # LSTM - Paper-compliant
+        print("\nTraining LSTM baseline (paper-compliant)...")
         lstm_model = BaselineModelFactory.create_model(
             'lstm', input_size,
-            hidden_size=baseline_config.get('lstm_hidden', 64),  # Increased from 32
-            dropout=baseline_config.get('dropout', 0.3)  # Increased from 0.1
+            hidden_size=baseline_config.get('lstm_hidden', 32),
+            dropout=baseline_config.get('dropout', 0.1)
         )
         lstm_trainer = ModelTrainer(lstm_model)
         lstm_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=baseline_config.get('epochs', 200),  # Increased from 50
-            batch_size=64, learning_rate=5e-4, optimizer_name='adam'  # Optimized
+            epochs=baseline_config.get('epochs', 100),
+            batch_size=train_config.get('batch_size', 32), 
+            learning_rate=train_config.get('learning_rate', 1e-3), 
+            optimizer_name=train_config.get('optimizer', 'adamax')
         )
         models['LSTM'] = lstm_model
         
-        # SVM - Optimized Parameters
-        print("\nTraining SVM baseline (optimized)...")
+        # SVM - Paper-compliant Parameters
+        print("\nTraining SVM baseline (paper-compliant)...")
         svm_model = BaselineModelFactory.create_model('svm', input_size, 
-                                                     C=baseline_config.get('svm_C', 10.0),  # Increased regularization
+                                                     C=baseline_config.get('svm_C', 1.0),
                                                      gamma=baseline_config.get('svm_gamma', 'scale'))
         svm_model.fit(X_train, y_train)
         models['SVM'] = svm_model
         
-        # Random Forest - Optimized Parameters
-        print("\nTraining Random Forest baseline (optimized)...")
+        # Random Forest - Paper-compliant Parameters
+        print("\nTraining Random Forest baseline (paper-compliant)...")
         rf_model = BaselineModelFactory.create_model(
             'rf', input_size,
-            n_estimators=baseline_config.get('rf_trees', 200),  # Increased from 100
-            max_depth=baseline_config.get('rf_depth', 15),  # Added depth control
-            min_samples_split=baseline_config.get('rf_min_split', 10)  # Added split control
+            n_estimators=baseline_config.get('rf_trees', 100),
+            max_depth=baseline_config.get('rf_depth', 10),
+            min_samples_split=baseline_config.get('rf_min_split', 5)
         )
         rf_model.fit(X_train, y_train)
         models['Random Forest'] = rf_model
@@ -455,43 +486,48 @@ def main():
     
     args = parser.parse_args()
     
-    # Default configuration - Optimized for target accuracy
+    # Default configuration - Paper-compliant settings (Units=64, Activation=tanh, Optimizer=Adamax, Dropout=0.1)
     default_config = {
         "data_dir": "data",
         "results_dir": args.output,
         "symbol": "^GSPC",
-        "data_years": 10,
+        "data_years": 17,  # 2005-01-01 to 2022-03-31 (paper timeframe)
+        "use_paper_timeframe": True,
+        "start_date": "2005-01-01",
+        "end_date": "2022-03-31",
         "cae": {
-            "hidden_dim": 128,
-            "encoding_dim": 32,
-            "dropout": 0.2,
-            "lambda_reg": 5e-4,
-            "epochs": 200,
-            "batch_size": 128,
-            "learning_rate": 5e-4
+            "hidden_dim": 64,  # Paper-compliant
+            "encoding_dim": 16,  # Reasonable for compression
+            "dropout": 0.1,  # Paper-compliant
+            "lambda_reg": 1e-4,
+            "epochs": 100,
+            "batch_size": 32,
+            "learning_rate": 1e-3
         },
         "training": {
-            "window_length": 30,
+            "window_length": 20,  # Standard sequence length
             "step_size": 1,
-            "epochs": 300,
-            "batch_size": 64,
-            "learning_rate": 1e-4,
-            "patience": 30
+            "epochs": 100,
+            "batch_size": 32,
+            "learning_rate": 1e-3,
+            "optimizer": "adamax",  # Paper-compliant
+            "patience": 20
         },
         "plstm_tal": {
-            "hidden_size": 128,
-            "num_layers": 2,
-            "dropout": 0.3
+            "hidden_size": 64,  # Paper-compliant: Units=64
+            "num_layers": 1,
+            "dropout": 0.1,  # Paper-compliant
+            "activation": "tanh"  # Paper-compliant
         },
         "baselines": {
-            "epochs": 200,
-            "dropout": 0.3,
-            "cnn_filters": 64,
-            "lstm_hidden": 64,
-            "rf_trees": 200,
-            "rf_depth": 15,
-            "rf_min_split": 10,
-            "svm_C": 10.0,
+            "epochs": 100,
+            "dropout": 0.1,  # Paper-compliant
+            "cnn_filters": 32,
+            "lstm_hidden": 32,
+            "rf_trees": 100,
+            "rf_depth": 10,
+            "rf_min_split": 5,
+            "svm_C": 1.0,
             "svm_gamma": "scale"
         }
     }
@@ -517,7 +553,7 @@ def main():
     config = default_config
     
     # Run pipeline
-    pipeline = SimplifiedPipeline(config)
+    pipeline = PaperCompliantPipeline(config)
     results, comparison = pipeline.run_experiment()
     
     print("\n" + "="*60)
