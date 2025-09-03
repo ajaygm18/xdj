@@ -4,7 +4,7 @@
   "symbol": "^GSPC",
   "market": "SP500",
   "use_bayesian_optimization": true,
-  "bayesian_n_calls": 5,
+  "bayesian_n_calls": 10,
   "bayesian_quick_mode": true,
   "data_years": 17,
   "use_paper_timeframe": true,

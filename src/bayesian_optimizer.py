@@ -150,16 +150,31 @@ class BayesianOptimizer:
         # Set the search space for the objective function and create decorated version
         decorated_objective = use_named_args(self.search_space)(self.objective_function)
         
-        # Run Gaussian Process optimization
-        result = gp_minimize(
-            func=decorated_objective,
-            dimensions=self.search_space,
-            n_calls=self.n_calls,
-            random_state=self.random_state,
-            acq_func='EI',  # Expected Improvement
-            n_initial_points=10,  # Random exploration points
-            verbose=verbose
-        )
+        # Run Gaussian Process optimization  
+        try:
+            result = gp_minimize(
+                func=decorated_objective,
+                dimensions=self.search_space,
+                n_calls=max(self.n_calls, 10),  # Ensure minimum 10 calls
+                random_state=self.random_state,
+                acq_func='EI',  # Expected Improvement
+                n_initial_points=min(5, max(2, self.n_calls // 2)),  # Adaptive initial points
+                verbose=verbose
+            )
+        except Exception as e:
+            if "n_calls" in str(e) and self.n_calls < 10:
+                print(f"⚠️ Adjusting n_calls from {self.n_calls} to 10 (minimum requirement)")
+                result = gp_minimize(
+                    func=decorated_objective,
+                    dimensions=self.search_space,
+                    n_calls=10,
+                    random_state=self.random_state,
+                    acq_func='EI',
+                    n_initial_points=5,
+                    verbose=verbose
+                )
+            else:
+                raise e
         
         # Extract best parameters
         best_params_list = result.x
