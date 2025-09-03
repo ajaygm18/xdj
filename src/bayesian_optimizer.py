@@ -62,7 +62,7 @@ class BayesianOptimizer:
             
             # Training parameters
             Real(1e-4, 1e-2, name='learning_rate'), # Optimize learning rate
-            Integer(16, 64, name='batch_size'),     # Optimize batch size
+            Integer(32, 64, name='batch_size'),     # Optimize batch size
             Integer(10, 40, name='window_length'),   # Optimize sequence length
             
             # CAE parameters (if needed)
@@ -105,8 +105,7 @@ class BayesianOptimizer:
                 batch_size=params['batch_size'],
                 learning_rate=params['learning_rate'],
                 optimizer_name=params['optimizer'],
-                early_stopping_patience=10,
-                verbose=False  # Reduce output during optimization
+                early_stopping_patience=10
             )
             
             # Get best validation accuracy
@@ -280,7 +279,7 @@ class QuickBayesianOptimizer(BayesianOptimizer):
             Real(0.05, 0.2, name='dropout'),       # Narrower range around paper value
             Integer(1, 2, name='num_layers'),      # Fewer options
             Real(5e-4, 5e-3, name='learning_rate'), # Narrower range
-            Integer(16, 32, name='batch_size'),     # Fewer options
+            Integer(32, 64, name='batch_size'),     # Fewer options
             Categorical(['adamax', 'adam'], name='optimizer'), # Paper preference
             Categorical(['tanh'], name='activation')  # Paper specification only
         ]
@@ -316,8 +315,7 @@ class QuickBayesianOptimizer(BayesianOptimizer):
                 batch_size=full_params['batch_size'],
                 learning_rate=full_params['learning_rate'],
                 optimizer_name=full_params['optimizer'],
-                early_stopping_patience=5,
-                verbose=False
+                early_stopping_patience=5
             )
             
             val_accuracy = max(history['val_accuracy'])
