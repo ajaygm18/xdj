@@ -25,7 +25,7 @@ from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
 from eemd import EEMDDenoiser
-from multi_market_loader import MultiMarketDataLoader
+from multi_market_loader import USAMarketDataLoader
 
 # Import both indicator implementations
 from indicators import TechnicalIndicators  # Manual implementation fallback
@@ -34,6 +34,20 @@ try:
     TALIB_INDICATORS_AVAILABLE = True
 except ImportError:
     TALIB_INDICATORS_AVAILABLE = False
+
+# Import Bayesian optimization
+try:
+    from bayesian_optimizer import BayesianOptimizer, QuickBayesianOptimizer
+    BAYESIAN_OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    try:
+        import sys
+        sys.path.append(os.path.join(current_dir, 'src'))
+        from bayesian_optimizer import BayesianOptimizer, QuickBayesianOptimizer
+        BAYESIAN_OPTIMIZATION_AVAILABLE = True
+    except ImportError:
+        BAYESIAN_OPTIMIZATION_AVAILABLE = False
+        print("Warning: Bayesian optimization not available. Install scikit-optimize for full paper compliance.")
 
 
 class PaperCompliantPipeline:
@@ -51,15 +65,19 @@ class PaperCompliantPipeline:
         
         # Initialize components
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
-        self.multi_market_loader = MultiMarketDataLoader()
+        self.usa_market_loader = USAMarketDataLoader()
         
         # Import data loader
         from data_loader import YFinanceDataLoader
         self.data_loader = YFinanceDataLoader()
         
     def load_market_data_by_code(self, market_code: str = "SP500") -> tuple:
-        """Load market data using paper-compliant market codes."""
-        print(f"Loading market data for {market_code}...")
+        """Load USA market data (S&P 500 only) using paper-compliant parameters."""
+        if market_code != "SP500":
+            print(f"Warning: Only SP500 (USA) market supported. Using SP500 instead of {market_code}")
+            market_code = "SP500"
+            
+        print(f"Loading USA market data (S&P 500)...")
         
         # Use paper timeframe if specified in config
         if self.config.get('use_paper_timeframe', False):
@@ -76,8 +94,8 @@ class PaperCompliantPipeline:
             end_date = end_date_dt.strftime("%Y-%m-%d")
             print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
-        # Download data using multi-market loader
-        price_df = self.multi_market_loader.download_market_data(market_code, start_date, end_date)
+        # Download data using USA market loader
+        price_df = self.usa_market_loader.download_market_data(market_code, start_date, end_date)
         
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)
@@ -92,18 +110,16 @@ class PaperCompliantPipeline:
         )
         filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
         
-        print(f"Market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
+        print(f"USA market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
         print(f"Price range: ${price_df['close'].min():.2f} - ${price_df['close'].max():.2f}")
         print(f"EEMD metadata: {eemd_metadata}")
         
         return features_df, price_df['close'], filtered_prices
         
     def load_real_market_data(self, symbol: str = "^GSPC", years: int = 17) -> tuple:
-        """Load real market data from Yahoo Finance (legacy method for backward compatibility)."""
-        # Convert symbol to market code for consistent interface
-        symbol_to_market = {'^GSPC': 'SP500', '^FTSE': 'FTSE', '000001.SS': 'SSE', '^NSEI': 'NIFTY50'}
-        market_code = symbol_to_market.get(symbol, 'SP500')
-        return self.load_market_data_by_code(market_code)
+        """Load real market data from Yahoo Finance (legacy method - now USA only)."""
+        # All symbols now map to SP500 (USA only)
+        return self.load_market_data_by_code("SP500")
         
     def generate_synthetic_data(self, n_samples: int = 4000) -> tuple:
         """Generate realistic synthetic stock market data."""
@@ -271,6 +287,77 @@ class PaperCompliantPipeline:
         print("Applied simplified EEMD filtering (rolling median)")
         return filtered
     
+    def run_bayesian_optimization(self, X_train, y_train, X_val, y_val, input_size, use_quick_mode=False):
+        """
+        Run Bayesian hyperparameter optimization.
+        
+        Args:
+            X_train, y_train: Training data
+            X_val, y_val: Validation data  
+            input_size: Input feature size
+            use_quick_mode: Use faster optimization for testing
+            
+        Returns:
+            dict: Optimized hyperparameters
+        """
+        if not BAYESIAN_OPTIMIZATION_AVAILABLE:
+            print("⚠️ Bayesian optimization not available. Using paper-compliant defaults.")
+            if use_quick_mode:
+                return QuickBayesianOptimizer(X_train, y_train, X_val, y_val, input_size).get_paper_compliant_params()
+            else:
+                return BayesianOptimizer(X_train, y_train, X_val, y_val, input_size).get_paper_compliant_params()
+        
+        print("\n" + "="*60)
+        print("BAYESIAN HYPERPARAMETER OPTIMIZATION")
+        print("="*60)
+        print("Optimizing PLSTM-TAL hyperparameters using Gaussian Process...")
+        
+        # Choose optimizer type
+        if use_quick_mode:
+            n_calls = self.config.get('bayesian_n_calls', 10)
+            optimizer = QuickBayesianOptimizer(X_train, y_train, X_val, y_val, input_size, n_calls=n_calls)
+            print(f"Using Quick Bayesian Optimizer with {n_calls} evaluations")
+        else:
+            n_calls = self.config.get('bayesian_n_calls', 50)
+            optimizer = BayesianOptimizer(X_train, y_train, X_val, y_val, input_size, n_calls=n_calls)
+            print(f"Using Full Bayesian Optimizer with {n_calls} evaluations")
+        
+        # Run optimization
+        print(f"Search space dimensions: {len(optimizer.search_space)}")
+        print("Starting hyperparameter search...")
+        
+        try:
+            best_params = optimizer.optimize(verbose=True)
+            
+            # Show comparison with paper parameters
+            optimizer.compare_with_paper_params()
+            
+            # Save optimization results
+            optimization_summary = optimizer.get_optimization_summary()
+            
+            # Save to results directory
+            import json
+            opt_results = {
+                'best_params': best_params,
+                'best_score': optimizer.best_score,
+                'optimization_summary': optimization_summary,
+                'paper_params': optimizer.get_paper_compliant_params()
+            }
+            
+            with open(f"{self.results_dir}/bayesian_optimization.json", 'w') as f:
+                json.dump(opt_results, f, indent=2, default=str)
+            
+            print(f"\n✅ Bayesian optimization completed!")
+            print(f"📊 Results saved to: {self.results_dir}/bayesian_optimization.json")
+            print(f"🎯 Best validation accuracy: {optimizer.best_score:.4f}")
+            
+            return best_params
+            
+        except Exception as e:
+            print(f"❌ Bayesian optimization failed: {e}")
+            print("Falling back to paper-compliant parameters...")
+            return optimizer.get_paper_compliant_params()
+    
     def run_experiment(self):
         """Run the complete experiment pipeline with paper-compliant parameters."""
         print("=" * 60)
@@ -326,32 +413,52 @@ class PaperCompliantPipeline:
         print(f"  Validation: {X_val.shape}")
         print(f"  Test: {X_test.shape}")
         
-        # Step 4: Train Models with Optimized Hyperparameters
-        print("\n--- Training Models (Full Optimization) ---")
+        input_size = X_train.shape[2]
+        
+        # Step 4: Bayesian Hyperparameter Optimization (if enabled)
+        use_bayesian = self.config.get('use_bayesian_optimization', True)
+        if use_bayesian:
+            print("\n--- Bayesian Hyperparameter Optimization ---")
+            optimized_params = self.run_bayesian_optimization(
+                X_train, y_train, X_val, y_val, input_size, 
+                use_quick_mode=self.config.get('bayesian_quick_mode', False)
+            )
+        else:
+            print("\n--- Using Default Paper-Compliant Parameters ---")
+            optimized_params = {
+                'hidden_size': 64, 'dropout': 0.1, 'num_layers': 1,
+                'learning_rate': 1e-3, 'batch_size': 32, 'window_length': 20,
+                'optimizer': 'adamax', 'activation': 'tanh'
+            }
+        
+        # Step 5: Train Models with Optimized Hyperparameters
+        print("\n--- Training Models with Optimized Parameters ---")
         models = {}
         results = {}
         
-        input_size = X_train.shape[2]
+        # PLSTM-TAL (Main model) - Using optimized parameters
+        print(f"\nTraining PLSTM-TAL with optimized parameters:")
+        print(f"  Hidden Size: {optimized_params.get('hidden_size', 64)}")
+        print(f"  Dropout: {optimized_params.get('dropout', 0.1)}")
+        print(f"  Optimizer: {optimized_params.get('optimizer', 'adamax')}")
+        print(f"  Learning Rate: {optimized_params.get('learning_rate', 1e-3)}")
         
-        # PLSTM-TAL (Main model) - Paper-compliant
-        print("\nTraining PLSTM-TAL with paper-compliant parameters...")
-        plstm_config = self.config.get('plstm_tal', {})
         plstm_model = PLSTM_TAL(
             input_size=input_size,
-            hidden_size=plstm_config.get('hidden_size', 64),  # Paper-compliant: Units=64
-            num_layers=plstm_config.get('num_layers', 1),  # Paper-compliant
-            dropout=plstm_config.get('dropout', 0.1),  # Paper-compliant
-            activation=plstm_config.get('activation', 'tanh')  # Paper-compliant
+            hidden_size=optimized_params.get('hidden_size', 64),
+            num_layers=optimized_params.get('num_layers', 1),
+            dropout=optimized_params.get('dropout', 0.1),
+            activation=optimized_params.get('activation', 'tanh')
         )
         
         plstm_trainer = ModelTrainer(plstm_model)
         plstm_history = plstm_trainer.train(
             X_train, y_train, X_val, y_val,
-            epochs=train_config.get('epochs', 100),
-            batch_size=train_config.get('batch_size', 32),
-            learning_rate=train_config.get('learning_rate', 1e-3),
-            optimizer_name=train_config.get('optimizer', 'adamax'),  # Paper-compliant
-            early_stopping_patience=train_config.get('patience', 20)
+            epochs=self.config.get('training', {}).get('epochs', 100),
+            batch_size=optimized_params.get('batch_size', 32),
+            learning_rate=optimized_params.get('learning_rate', 1e-3),
+            optimizer_name=optimized_params.get('optimizer', 'adamax'),
+            early_stopping_patience=self.config.get('training', {}).get('patience', 20)
         )
         models['PLSTM-TAL'] = plstm_model
         
@@ -476,95 +583,6 @@ class PaperCompliantPipeline:
         print("Pipeline completed successfully!")
         
         return results, comparison_df
-    
-    def run_all_markets_experiment(self):
-        """Run experiments on all four markets mentioned in the paper."""
-        markets = self.config.get('markets', ['SP500', 'FTSE', 'SSE', 'NIFTY50'])
-        print("=" * 80)
-        print("PLSTM-TAL Multi-Market Analysis - All Paper Markets")
-        print("=" * 80)
-        
-        all_results = {}
-        market_info = self.multi_market_loader.get_market_info()
-        
-        for market_code in markets:
-            try:
-                print(f"\n{'='*20} Processing {market_code} ({''.join(market_info[market_code]['name'])}) {'='*20}")
-                
-                # Create market-specific results directory
-                market_results_dir = f"{self.results_dir}/{market_code}"
-                os.makedirs(market_results_dir, exist_ok=True)
-                
-                # Temporarily update config for this market
-                original_market = self.config.get('market', 'SP500')
-                original_results_dir = self.config.get('results_dir', 'results')
-                
-                self.config['market'] = market_code
-                self.config['results_dir'] = market_results_dir
-                self.results_dir = market_results_dir
-                
-                # Run experiment for this market
-                results, comparison = self.run_experiment()
-                all_results[market_code] = {
-                    'results': results,
-                    'comparison': comparison,
-                    'market_info': market_info[market_code]
-                }
-                
-                # Restore original config
-                self.config['market'] = original_market
-                self.config['results_dir'] = original_results_dir
-                self.results_dir = original_results_dir
-                
-                print(f"✅ Completed {market_code} analysis")
-                
-            except Exception as e:
-                print(f"❌ Failed to process {market_code}: {e}")
-                continue
-        
-        # Generate comprehensive multi-market report
-        self.generate_multi_market_report(all_results)
-        
-        return all_results
-    
-    def generate_multi_market_report(self, all_results: dict):
-        """Generate a comprehensive report comparing all markets."""
-        print("\n" + "="*60)
-        print("MULTI-MARKET ANALYSIS SUMMARY")
-        print("="*60)
-        
-        # Create summary table
-        summary_data = []
-        for market_code, market_data in all_results.items():
-            if 'results' in market_data:
-                results = market_data['results']
-                market_info = market_data['market_info']
-                
-                # Get PLSTM-TAL results
-                plstm_metrics = results.get('PLSTM-TAL', {}).get('metrics', {})
-                
-                summary_data.append({
-                    'Market': f"{market_info['name']} ({market_info['country']})",
-                    'Code': market_code,
-                    'Accuracy': f"{plstm_metrics.get('accuracy', 0):.4f}",
-                    'Precision': f"{plstm_metrics.get('precision', 0):.4f}",
-                    'Recall': f"{plstm_metrics.get('recall', 0):.4f}",
-                    'F1-Score': f"{plstm_metrics.get('f1_score', 0):.4f}",
-                    'AUC-ROC': f"{plstm_metrics.get('auc_roc', 0):.4f}",
-                    'PR-AUC': f"{plstm_metrics.get('pr_auc', 0):.4f}",
-                    'MCC': f"{plstm_metrics.get('mcc', 0):.4f}"
-                })
-        
-        # Save summary to CSV
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_csv(f"{self.results_dir}/multi_market_summary.csv", index=False)
-            print("\nMulti-Market PLSTM-TAL Performance Summary:")
-            print(summary_df.to_string(index=False))
-        
-        print(f"\n✅ Multi-market analysis completed!")
-        print(f"📊 Results saved to: {self.results_dir}/")
-        print(f"📋 Summary report: {self.results_dir}/multi_market_summary.csv")
 
 
 def main():
@@ -577,14 +595,15 @@ def main():
     
     args = parser.parse_args()
     
-    # Default configuration - Paper-compliant settings (Units=64, Activation=tanh, Optimizer=Adamax, Dropout=0.1)
+    # Default configuration - USA market focus with Bayesian optimization
     default_config = {
         "data_dir": "data",
         "results_dir": args.output,
         "symbol": "^GSPC",  # Legacy support
-        "market": "SP500",  # Paper-compliant market codes
-        "markets": ["SP500", "FTSE", "SSE", "NIFTY50"],  # All paper markets
-        "run_all_markets": False,  # Set to True to run on all markets
+        "market": "SP500",  # USA market focus only
+        "use_bayesian_optimization": True,  # Enable Bayesian optimization
+        "bayesian_n_calls": 50,  # Number of Bayesian optimization calls
+        "bayesian_quick_mode": False,  # Use quick mode for testing
         "data_years": 17,  # 2005-01-01 to 2022-03-31 (paper timeframe)
         "use_paper_timeframe": True,
         "start_date": "2005-01-01",
@@ -650,16 +669,17 @@ def main():
     # Run pipeline
     pipeline = PaperCompliantPipeline(config)
     
-    # Check if we should run all markets or just one
-    if config.get('run_all_markets', False):
-        print("Running analysis on all paper-specified markets...")
-        all_results = pipeline.run_all_markets_experiment()
+    # Run USA market analysis with Bayesian optimization
+    print(f"Running analysis on USA market (S&P 500) with Bayesian optimization...")
+    if config.get('use_bayesian_optimization', True):
+        print("✅ Bayesian hyperparameter optimization enabled")
     else:
-        print(f"Running analysis on single market: {config.get('market', 'SP500')}")
-        results, comparison = pipeline.run_experiment()
+        print("⚠️ Using default paper-compliant parameters")
+    
+    results, comparison = pipeline.run_experiment()
     
     print("\n" + "="*60)
-    print("EXPERIMENT COMPLETED SUCCESSFULLY!")
+    print("USA MARKET EXPERIMENT COMPLETED SUCCESSFULLY!")
     print("="*60)
 
 
