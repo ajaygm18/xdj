@@ -1,33 +1,29 @@
 {
   "data_dir": "data",
-  "results_dir": "results",
-  "symbol": "^GSPC",
+  "results_dir": "results_test",
   "market": "SP500",
-  "markets": ["SP500", "FTSE", "SSE", "NIFTY50"],
+  "markets": ["SP500"],
   "run_all_markets": false,
-  "data_years": 17,
-  "use_paper_timeframe": true,
-  "start_date": "2005-01-01",
-  "end_date": "2022-03-31",
-  "use_paper_compliant_labeling": true,
+  "use_paper_timeframe": false,
+  "data_years": 2,
   "use_exact_40_indicators": true,
   "cae": {
     "hidden_dim": 64,
     "encoding_dim": 16,
     "dropout": 0.1,
     "lambda_reg": 1e-4,
-    "epochs": 100,
+    "epochs": 5,
     "batch_size": 32,
     "learning_rate": 1e-3
   },
   "training": {
     "window_length": 20,
     "step_size": 1,
-    "epochs": 100,
+    "epochs": 5,
     "batch_size": 32,
     "learning_rate": 1e-3,
     "optimizer": "adamax",
-    "patience": 20
+    "patience": 5
   },
   "plstm_tal": {
     "hidden_size": 64,
@@ -37,20 +33,20 @@
     "activation": "tanh"
   },
   "eemd": {
-    "n_ensembles": 100,
+    "n_ensembles": 10,
     "noise_scale": 0.2,
     "max_imfs": 10,
     "tolerance": 0.2,
     "w": 7
   },
   "baselines": {
-    "epochs": 100,
+    "epochs": 5,
     "dropout": 0.1,
     "cnn_filters": 32,
     "lstm_hidden": 32,
-    "rf_trees": 100,
-    "rf_depth": 10,
-    "rf_min_split": 5,
+    "rf_trees": 10,
+    "rf_depth": 5,
+    "rf_min_split": 2,
     "svm_C": 1.0,
     "svm_gamma": "scale"
   }

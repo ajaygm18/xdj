@@ -25,6 +25,7 @@ from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
 from eemd import EEMDDenoiser
+from multi_market_loader import MultiMarketDataLoader
 
 # Import both indicator implementations
 from indicators import TechnicalIndicators  # Manual implementation fallback
@@ -50,14 +51,15 @@ class PaperCompliantPipeline:
         
         # Initialize components
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
+        self.multi_market_loader = MultiMarketDataLoader()
         
         # Import data loader
         from data_loader import YFinanceDataLoader
         self.data_loader = YFinanceDataLoader()
         
-    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 17) -> tuple:
-        """Load real market data from Yahoo Finance."""
-        print(f"Loading real market data for {symbol}...")
+    def load_market_data_by_code(self, market_code: str = "SP500") -> tuple:
+        """Load market data using paper-compliant market codes."""
+        print(f"Loading market data for {market_code}...")
         
         # Use paper timeframe if specified in config
         if self.config.get('use_paper_timeframe', False):
@@ -67,21 +69,15 @@ class PaperCompliantPipeline:
         else:
             # Calculate date range based on years
             from datetime import datetime, timedelta
+            years = self.config.get('data_years', 17)
             end_date_dt = datetime.now()
             start_date_dt = end_date_dt - timedelta(days=years * 365)
             start_date = start_date_dt.strftime("%Y-%m-%d")
             end_date = end_date_dt.strftime("%Y-%m-%d")
             print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
-        # Download data
-        self.data_loader.symbol = symbol
-        raw_data = self.data_loader.download_data(
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        # Get OHLCV data
-        price_df = self.data_loader.get_ohlcv_data()
+        # Download data using multi-market loader
+        price_df = self.multi_market_loader.download_market_data(market_code, start_date, end_date)
         
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)
@@ -96,11 +92,18 @@ class PaperCompliantPipeline:
         )
         filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
         
-        print(f"Real data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
+        print(f"Market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
         print(f"Price range: ${price_df['close'].min():.2f} - ${price_df['close'].max():.2f}")
         print(f"EEMD metadata: {eemd_metadata}")
         
         return features_df, price_df['close'], filtered_prices
+        
+    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 17) -> tuple:
+        """Load real market data from Yahoo Finance (legacy method for backward compatibility)."""
+        # Convert symbol to market code for consistent interface
+        symbol_to_market = {'^GSPC': 'SP500', '^FTSE': 'FTSE', '000001.SS': 'SSE', '^NSEI': 'NIFTY50'}
+        market_code = symbol_to_market.get(symbol, 'SP500')
+        return self.load_market_data_by_code(market_code)
         
     def generate_synthetic_data(self, n_samples: int = 4000) -> tuple:
         """Generate realistic synthetic stock market data."""
@@ -274,9 +277,9 @@ class PaperCompliantPipeline:
         print("PLSTM-TAL Stock Market Prediction Pipeline - PAPER COMPLIANT")
         print("=" * 60)
         
-        # Step 1: Load Real Market Data (paper timeframe)
-        symbol = self.config.get('symbol', '^GSPC')
-        features_df, prices, filtered_prices = self.load_real_market_data(symbol)
+        # Step 1: Load Market Data (paper timeframe and market)
+        market_code = self.config.get('market', 'SP500')
+        features_df, prices, filtered_prices = self.load_market_data_by_code(market_code)
         
         # Step 2: Train CAE for Feature Extraction - Paper-compliant
         print("\n--- Training Contractive Autoencoder (Paper-compliant) ---")
@@ -474,6 +477,95 @@ class PaperCompliantPipeline:
         print("Pipeline completed successfully!")
         
         return results, comparison_df
+    
+    def run_all_markets_experiment(self):
+        """Run experiments on all four markets mentioned in the paper."""
+        markets = self.config.get('markets', ['SP500', 'FTSE', 'SSE', 'NIFTY50'])
+        print("=" * 80)
+        print("PLSTM-TAL Multi-Market Analysis - All Paper Markets")
+        print("=" * 80)
+        
+        all_results = {}
+        market_info = self.multi_market_loader.get_market_info()
+        
+        for market_code in markets:
+            try:
+                print(f"\n{'='*20} Processing {market_code} ({''.join(market_info[market_code]['name'])}) {'='*20}")
+                
+                # Create market-specific results directory
+                market_results_dir = f"{self.results_dir}/{market_code}"
+                os.makedirs(market_results_dir, exist_ok=True)
+                
+                # Temporarily update config for this market
+                original_market = self.config.get('market', 'SP500')
+                original_results_dir = self.config.get('results_dir', 'results')
+                
+                self.config['market'] = market_code
+                self.config['results_dir'] = market_results_dir
+                self.results_dir = market_results_dir
+                
+                # Run experiment for this market
+                results, comparison = self.run_experiment()
+                all_results[market_code] = {
+                    'results': results,
+                    'comparison': comparison,
+                    'market_info': market_info[market_code]
+                }
+                
+                # Restore original config
+                self.config['market'] = original_market
+                self.config['results_dir'] = original_results_dir
+                self.results_dir = original_results_dir
+                
+                print(f"✅ Completed {market_code} analysis")
+                
+            except Exception as e:
+                print(f"❌ Failed to process {market_code}: {e}")
+                continue
+        
+        # Generate comprehensive multi-market report
+        self.generate_multi_market_report(all_results)
+        
+        return all_results
+    
+    def generate_multi_market_report(self, all_results: dict):
+        """Generate a comprehensive report comparing all markets."""
+        print("\n" + "="*60)
+        print("MULTI-MARKET ANALYSIS SUMMARY")
+        print("="*60)
+        
+        # Create summary table
+        summary_data = []
+        for market_code, market_data in all_results.items():
+            if 'results' in market_data:
+                results = market_data['results']
+                market_info = market_data['market_info']
+                
+                # Get PLSTM-TAL results
+                plstm_metrics = results.get('PLSTM-TAL', {}).get('metrics', {})
+                
+                summary_data.append({
+                    'Market': f"{market_info['name']} ({market_info['country']})",
+                    'Code': market_code,
+                    'Accuracy': f"{plstm_metrics.get('accuracy', 0):.4f}",
+                    'Precision': f"{plstm_metrics.get('precision', 0):.4f}",
+                    'Recall': f"{plstm_metrics.get('recall', 0):.4f}",
+                    'F1-Score': f"{plstm_metrics.get('f1_score', 0):.4f}",
+                    'AUC-ROC': f"{plstm_metrics.get('auc_roc', 0):.4f}",
+                    'PR-AUC': f"{plstm_metrics.get('pr_auc', 0):.4f}",
+                    'MCC': f"{plstm_metrics.get('mcc', 0):.4f}"
+                })
+        
+        # Save summary to CSV
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_csv(f"{self.results_dir}/multi_market_summary.csv", index=False)
+            print("\nMulti-Market PLSTM-TAL Performance Summary:")
+            print(summary_df.to_string(index=False))
+        
+        print(f"\n✅ Multi-market analysis completed!")
+        print(f"📊 Results saved to: {self.results_dir}/")
+        print(f"📋 Summary report: {self.results_dir}/multi_market_summary.csv")
 
 
 def main():
@@ -490,11 +582,15 @@ def main():
     default_config = {
         "data_dir": "data",
         "results_dir": args.output,
-        "symbol": "^GSPC",
+        "symbol": "^GSPC",  # Legacy support
+        "market": "SP500",  # Paper-compliant market codes
+        "markets": ["SP500", "FTSE", "SSE", "NIFTY50"],  # All paper markets
+        "run_all_markets": False,  # Set to True to run on all markets
         "data_years": 17,  # 2005-01-01 to 2022-03-31 (paper timeframe)
         "use_paper_timeframe": True,
         "start_date": "2005-01-01",
         "end_date": "2022-03-31",
+        "use_exact_40_indicators": True,
         "cae": {
             "hidden_dim": 64,  # Paper-compliant
             "encoding_dim": 16,  # Reasonable for compression
@@ -554,7 +650,14 @@ def main():
     
     # Run pipeline
     pipeline = PaperCompliantPipeline(config)
-    results, comparison = pipeline.run_experiment()
+    
+    # Check if we should run all markets or just one
+    if config.get('run_all_markets', False):
+        print("Running analysis on all paper-specified markets...")
+        all_results = pipeline.run_all_markets_experiment()
+    else:
+        print(f"Running analysis on single market: {config.get('market', 'SP500')}")
+        results, comparison = pipeline.run_experiment()
     
     print("\n" + "="*60)
     print("EXPERIMENT COMPLETED SUCCESSFULLY!")
