@@ -4,14 +4,19 @@
   "symbol": "^GSPC",
   "market": "SP500",
   "use_bayesian_optimization": true,
-  "bayesian_n_calls": 10,
-  "bayesian_quick_mode": true,
+  "bayesian_n_calls": 50,
+  "bayesian_quick_mode": false,
   "data_years": 17,
   "use_paper_timeframe": true,
   "start_date": "2005-01-01",
   "end_date": "2022-03-31",
   "use_paper_compliant_labeling": true,
   "use_exact_40_indicators": true,
+  "eemd": {
+    "n_ensembles": 100,
+    "noise_scale": 0.2,
+    "w": 7
+  },
   "cae": {
     "hidden_dim": 64,
     "encoding_dim": 16,
@@ -34,15 +39,7 @@
     "hidden_size": 64,
     "num_layers": 1,
     "dropout": 0.1,
-    "bidirectional": false,
     "activation": "tanh"
-  },
-  "eemd": {
-    "n_ensembles": 100,
-    "noise_scale": 0.2,
-    "max_imfs": 10,
-    "tolerance": 0.2,
-    "w": 7
   },
   "baselines": {
     "epochs": 100,

@@ -423,6 +423,13 @@ class PaperCompliantPipeline:
                 X_train, y_train, X_val, y_val, input_size, 
                 use_quick_mode=self.config.get('bayesian_quick_mode', False)
             )
+            
+            # Ensure integer parameters are converted to int (fix for Bayesian optimization)
+            int_params = ['hidden_size', 'num_layers', 'batch_size', 'window_length', 'cae_hidden_dim', 'cae_encoding_dim']
+            for param in int_params:
+                if param in optimized_params:
+                    optimized_params[param] = int(optimized_params[param])
+                    
         else:
             print("\n--- Using Default Paper-Compliant Parameters ---")
             optimized_params = {
