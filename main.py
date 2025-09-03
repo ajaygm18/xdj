@@ -454,8 +454,7 @@ class PaperCompliantPipeline:
         
         # Save data information
         data_info = {
-            'symbol': symbol,
-            'years': years,
+            'market_code': market_code,
             'total_samples': len(features_df),
             'features_count': len(features_df.columns),
             'data_range': {
