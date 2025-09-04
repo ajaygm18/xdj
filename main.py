@@ -25,7 +25,7 @@ from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
 from eemd import EEMDDenoiser
-from multi_market_loader import USAMarketDataLoader
+from multi_market_loader import IndianMarketDataLoader
 
 # Import both indicator implementations
 from indicators import TechnicalIndicators  # Manual implementation fallback
@@ -65,19 +65,19 @@ class PaperCompliantPipeline:
         
         # Initialize components
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
-        self.usa_market_loader = USAMarketDataLoader()
+        self.indian_market_loader = IndianMarketDataLoader()
         
         # Import data loader
         from data_loader import YFinanceDataLoader
         self.data_loader = YFinanceDataLoader()
         
-    def load_market_data_by_code(self, market_code: str = "SP500") -> tuple:
-        """Load USA market data (S&P 500 only) using paper-compliant parameters."""
-        if market_code != "SP500":
-            print(f"Warning: Only SP500 (USA) market supported. Using SP500 instead of {market_code}")
-            market_code = "SP500"
+    def load_market_data_by_code(self, market_code: str = "RELIANCE") -> tuple:
+        """Load Indian market data (Reliance only) using paper-compliant parameters."""
+        if market_code != "RELIANCE":
+            print(f"Warning: Only RELIANCE (Indian) market supported. Using RELIANCE instead of {market_code}")
+            market_code = "RELIANCE"
             
-        print(f"Loading USA market data (S&P 500)...")
+        print(f"Loading Indian market data (Reliance Industries)...")
         
         # Use paper timeframe if specified in config
         if self.config.get('use_paper_timeframe', False):
@@ -94,8 +94,8 @@ class PaperCompliantPipeline:
             end_date = end_date_dt.strftime("%Y-%m-%d")
             print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
-        # Download data using USA market loader
-        price_df = self.usa_market_loader.download_market_data(market_code, start_date, end_date)
+        # Download data using Indian market loader
+        price_df = self.indian_market_loader.download_market_data(market_code, start_date, end_date)
         
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)
@@ -110,20 +110,20 @@ class PaperCompliantPipeline:
         )
         filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
         
-        print(f"USA market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
-        print(f"Price range: ${price_df['close'].min():.2f} - ${price_df['close'].max():.2f}")
+        print(f"Indian market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
+        print(f"Price range: ₹{price_df['close'].min():.2f} - ₹{price_df['close'].max():.2f}")
         print(f"EEMD metadata: {eemd_metadata}")
         
         return features_df, price_df['close'], filtered_prices
         
-    def load_real_market_data(self, symbol: str = "^GSPC", years: int = 17) -> tuple:
-        """Load real market data from Yahoo Finance (legacy method - now USA only)."""
-        # All symbols now map to SP500 (USA only)
-        return self.load_market_data_by_code("SP500")
+    def load_real_market_data(self, symbol: str = "RELIANCE.NS", years: int = 17) -> tuple:
+        """Load real market data from Yahoo Finance (legacy method - now Indian only)."""
+        # All symbols now map to RELIANCE (Indian only)
+        return self.load_market_data_by_code("RELIANCE")
         
     def generate_synthetic_data(self, n_samples: int = 4000) -> tuple:
         """Generate realistic synthetic stock market data."""
-        print("Generating synthetic S&P 500 data...")
+        print("Generating synthetic Reliance stock data...")
         
         np.random.seed(42)  # For reproducibility
         
@@ -131,10 +131,10 @@ class PaperCompliantPipeline:
         start_date = pd.Timestamp('2005-01-01')
         dates = pd.bdate_range(start=start_date, periods=n_samples)
         
-        # Generate realistic price series
-        initial_price = 1200.0
-        daily_return_mean = 0.0008  # ~20% annual return
-        daily_return_std = 0.012    # ~19% annual volatility
+        # Generate realistic price series (adapted for Indian stock)
+        initial_price = 300.0       # Starting price for Reliance (₹)
+        daily_return_mean = 0.0012  # ~30% annual return (Indian market)
+        daily_return_std = 0.018    # ~28% annual volatility (Indian market)
         
         returns = np.random.normal(daily_return_mean, daily_return_std, n_samples)
         
@@ -365,7 +365,7 @@ class PaperCompliantPipeline:
         print("=" * 60)
         
         # Step 1: Load Market Data (paper timeframe and market)
-        market_code = self.config.get('market', 'SP500')
+        market_code = self.config.get('market', 'RELIANCE')
         features_df, prices, filtered_prices = self.load_market_data_by_code(market_code)
         
         # Step 2: Train CAE for Feature Extraction - Paper-compliant
@@ -607,7 +607,7 @@ def main():
         "data_dir": "data",
         "results_dir": args.output,
         "symbol": "^GSPC",  # Legacy support
-        "market": "SP500",  # USA market focus only
+        "market": "RELIANCE",  # Indian market focus only
         "use_bayesian_optimization": True,  # Enable Bayesian optimization
         "bayesian_n_calls": 50,  # Number of Bayesian optimization calls
         "bayesian_quick_mode": False,  # Use quick mode for testing
