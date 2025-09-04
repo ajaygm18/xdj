@@ -1,15 +1,15 @@
 {
-  "market_code": "SP500",
-  "total_samples": 4341,
+  "market_code": "RELIANCE",
+  "total_samples": 4255,
   "features_count": 46,
   "data_range": {
     "start": "2005-01-03",
     "end": "2022-03-30"
   },
   "price_statistics": {
-    "min": 676.530029296875,
-    "max": 4796.56005859375,
-    "mean": 1993.2417428474278,
-    "std": 931.2963807914016
+    "min": 30.09813690185547,
+    "max": 1243.0245361328125,
+    "mean": 320.4730040584972,
+    "std": 271.69799704240046
   }
 }

@@ -1,14 +1,10 @@
 {
   "best_params": {
-    "hidden_size": "108",
-    "dropout": 0.09585869746654097,
-    "num_layers": "3",
-    "learning_rate": 0.0060088165636702235,
+    "hidden_size": "83",
+    "dropout": 0.07751521847992458,
+    "num_layers": "2",
+    "learning_rate": 0.003185825710759192,
     "batch_size": "46",
-    "window_length": "13",
-    "cae_hidden_dim": "76",
-    "cae_encoding_dim": "16",
-    "cae_lambda_reg": 0.0001514381497427214,
     "optimizer": "adamax",
     "activation": "tanh"
   },
