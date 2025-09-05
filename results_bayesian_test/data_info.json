@@ -1,0 +1,15 @@
+{
+  "market_code": "SP500",
+  "total_samples": 313,
+  "features_count": 46,
+  "data_range": {
+    "start": "2021-01-04",
+    "end": "2022-03-30"
+  },
+  "price_statistics": {
+    "min": 3700.64990234375,
+    "max": 4796.56005859375,
+    "mean": 4310.293320530901,
+    "std": 277.14682363596523
+  }
+}

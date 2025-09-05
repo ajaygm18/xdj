@@ -1,0 +1,58 @@
+{
+  "data_dir": "data",
+  "results_dir": "results_bayesian_test",
+  "symbol": "^GSPC",
+  "market": "SP500",
+  "use_bayesian_optimization": true,
+  "bayesian_n_calls": 10,
+  "bayesian_quick_mode": true,
+  "data_years": 17,
+  "use_paper_timeframe": true,
+  "start_date": "2021-01-01",
+  "end_date": "2022-03-31",
+  "use_paper_compliant_labeling": true,
+  "use_exact_40_indicators": true,
+  "cae": {
+    "hidden_dim": 64,
+    "encoding_dim": 16,
+    "dropout": 0.1,
+    "lambda_reg": 1e-4,
+    "epochs": 20,
+    "batch_size": 32,
+    "learning_rate": 1e-3
+  },
+  "training": {
+    "window_length": 20,
+    "step_size": 1,
+    "epochs": 20,
+    "batch_size": 32,
+    "learning_rate": 1e-3,
+    "optimizer": "adamax",
+    "patience": 10
+  },
+  "plstm_tal": {
+    "hidden_size": 64,
+    "num_layers": 1,
+    "dropout": 0.1,
+    "bidirectional": false,
+    "activation": "tanh"
+  },
+  "eemd": {
+    "n_ensembles": 50,
+    "noise_scale": 0.2,
+    "max_imfs": 10,
+    "tolerance": 0.2,
+    "w": 7
+  },
+  "baselines": {
+    "epochs": 20,
+    "dropout": 0.1,
+    "cnn_filters": 32,
+    "lstm_hidden": 32,
+    "rf_trees": 50,
+    "rf_depth": 5,
+    "rf_min_split": 5,
+    "svm_C": 1.0,
+    "svm_gamma": "scale"
+  }
+}

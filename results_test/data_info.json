@@ -1,0 +1,15 @@
+{
+  "market_code": "SP500",
+  "total_samples": 500,
+  "features_count": 46,
+  "data_range": {
+    "start": "2023-09-05",
+    "end": "2025-09-02"
+  },
+  "price_statistics": {
+    "min": 4117.3701171875,
+    "max": 6501.85986328125,
+    "mean": 5442.947637695313,
+    "std": 599.1500751925106
+  }
+}
