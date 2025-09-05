@@ -25,7 +25,7 @@ from cae import CAEFeatureExtractor
 from train import DataPreprocessor, ModelTrainer
 from eval import ModelEvaluator
 from eemd import EEMDDenoiser
-from multi_market_loader import IndianMarketDataLoader
+from multi_market_loader import USAMarketDataLoader
 
 # Import both indicator implementations
 from indicators import TechnicalIndicators  # Manual implementation fallback
@@ -65,7 +65,7 @@ class PaperCompliantPipeline:
         
         # Initialize components
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
-        self.indian_market_loader = IndianMarketDataLoader()
+        self.usa_market_loader = USAMarketDataLoader()
         
         # Import data loader
         from data_loader import YFinanceDataLoader
@@ -95,7 +95,7 @@ class PaperCompliantPipeline:
             print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
         # Download data using Indian market loader
-        price_df = self.indian_market_loader.download_market_data(market_code, start_date, end_date)
+        price_df = self.usa_market_loader.download_market_data(market_code, start_date, end_date)
         
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)

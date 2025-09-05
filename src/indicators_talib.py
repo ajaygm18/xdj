@@ -19,15 +19,14 @@ except ImportError:
 class TechnicalIndicatorsTA:
     """Computes technical indicators using TA-Lib library - Paper compliant."""
     
-    # List of all technical indicators as specified in the paper (40 + LOG_RETURN)
+    # List of exactly 40 technical indicators as specified in the paper (same as reference [17])
     INDICATORS = [
-        'BBANDS_upper', 'BBANDS_middle', 'BBANDS_lower', 'WMA', 'EMA', 'DEMA', 
-        'KAMA', 'MAMA', 'MIDPRICE', 'SAR', 'SMA', 'T3', 'TEMA', 'TRIMA', 
-        'AD', 'ADOSC', 'OBV', 'MEDPRICE', 'TYPPRICE', 'WCLPRICE', 'ADX', 
-        'ADXR', 'APO', 'AROON_down', 'AROON_up', 'AROONOSC', 'BOP', 'CCI', 
-        'CMO', 'DX', 'MACD', 'MACD_signal', 'MACD_hist', 'MFI', 'MINUS_DI', 
-        'MOM', 'PLUS_DI', 'PPO', 'ROC', 'RSI', 'STOCH_k', 'STOCH_d', 
-        'STOCHRSI', 'ULTOSC', 'WILLR', 'LOG_RETURN'
+        'BBANDS', 'WMA', 'EMA', 'DEMA', 'KAMA', 'MAMA', 'MIDPRICE', 'SAR', 
+        'SMA', 'T3', 'TEMA', 'TRIMA', 'AD', 'ADOSC', 'OBV', 'MEDPRICE', 
+        'TYPPRICE', 'WCLPRICE', 'ADX', 'ADXR', 'APO', 'AROON', 'AROONOSC', 
+        'BOP', 'CCI', 'CMO', 'DX', 'MACD', 'MFI', 'MINUS_DI', 'MOM', 
+        'PLUS_DI', 'PPO', 'ROC', 'RSI', 'STOCH', 'STOCHRSI', 'ULTOSC', 
+        'WILLR', 'LOG_RETURN'
     ]
     
     def __init__(self):
@@ -36,15 +35,16 @@ class TechnicalIndicatorsTA:
     
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Compute all 40+ technical indicators from OHLCV data using TA-Lib.
+        Compute exactly 40 technical indicators from OHLCV data using TA-Lib.
         
-        This follows the exact specifications from the paper's pseudocode.
+        This follows the exact specifications from the paper's pseudocode,
+        implementing the same 40 indicators as reference [17].
         
         Args:
             df: DataFrame with columns ['open', 'high', 'low', 'close', 'volume']
             
         Returns:
-            DataFrame with all computed features
+            DataFrame with exactly 40 computed features
         """
         if not all(col in df.columns for col in ['open', 'high', 'low', 'close', 'volume']):
             raise ValueError("DataFrame must contain OHLCV columns")
@@ -60,11 +60,9 @@ class TechnicalIndicatorsTA:
         
         print("Computing TA-Lib indicators exactly as specified in paper...")
         
-        # Overlap Studies (as per paper pseudocode)
+        # Overlap Studies (as per paper pseudocode) - exactly 40 indicators
         upper, middle, lower = talib.BBANDS(close_prices)
-        features['BBANDS_upper'] = upper
-        features['BBANDS_middle'] = middle  
-        features['BBANDS_lower'] = lower
+        features['BBANDS'] = middle  # Use middle band as representative BBANDS value
         
         features['WMA'] = talib.WMA(close_prices)
         features['EMA'] = talib.EMA(close_prices)
@@ -95,8 +93,7 @@ class TechnicalIndicatorsTA:
         features['APO'] = talib.APO(close_prices)
         
         aroondown, aroonup = talib.AROON(high_prices, low_prices)
-        features['AROON_down'] = aroondown
-        features['AROON_up'] = aroonup
+        features['AROON'] = (aroondown + aroonup) / 2  # Use average of both components
         features['AROONOSC'] = talib.AROONOSC(high_prices, low_prices)
         
         features['BOP'] = talib.BOP(open_prices, high_prices, low_prices, close_prices)
@@ -105,9 +102,7 @@ class TechnicalIndicatorsTA:
         features['DX'] = talib.DX(high_prices, low_prices, close_prices)
         
         macd, macd_signal, macd_hist = talib.MACD(close_prices)
-        features['MACD'] = macd
-        features['MACD_signal'] = macd_signal
-        features['MACD_hist'] = macd_hist
+        features['MACD'] = macd  # Use main MACD line as representative value
         
         features['MFI'] = talib.MFI(high_prices, low_prices, close_prices, volume)
         features['MINUS_DI'] = talib.MINUS_DI(high_prices, low_prices, close_prices)
@@ -118,8 +113,7 @@ class TechnicalIndicatorsTA:
         features['RSI'] = talib.RSI(close_prices)
         
         slowk, slowd = talib.STOCH(high_prices, low_prices, close_prices)
-        features['STOCH_k'] = slowk
-        features['STOCH_d'] = slowd
+        features['STOCH'] = slowk  # Use %K as representative STOCH value
         
         # STOCHRSI can return different shapes - handle carefully
         try:
@@ -153,7 +147,19 @@ class TechnicalIndicatorsTA:
         feature_df = feature_df.fillna(0)
         
         print(f"✓ Computed {len(feature_df.columns)} TA-Lib indicators for {len(feature_df)} samples")
+        
+        # Verify we have exactly 40 indicators as per paper
+        if len(feature_df.columns) != 40:
+            print(f"WARNING: Expected exactly 40 indicators, got {len(feature_df.columns)}")
+            print(f"Indicators: {list(feature_df.columns)}")
+        else:
+            print("✓ Paper-compliant: Exactly 40 technical indicators computed")
+        
         return feature_df
+    
+    def calculate_all_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Alias for compute_features to maintain compatibility."""
+        return self.compute_features(df)
     
     def validate_features(self, features_df: pd.DataFrame) -> Dict[str, Any]:
         """Validate computed features and return statistics."""
