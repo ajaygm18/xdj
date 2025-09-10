@@ -67,18 +67,25 @@ class PaperCompliantPipeline:
         self.evaluator = ModelEvaluator(save_plots=True, plot_dir=self.results_dir)
         self.usa_market_loader = USAMarketDataLoader()
         
+        # Add Indian market loader
+        from multi_market_loader import IndianMarketDataLoader
+        self.indian_market_loader = IndianMarketDataLoader()
+        
         # Import data loader
         from data_loader import YFinanceDataLoader
         self.data_loader = YFinanceDataLoader()
         
-    def load_market_data_by_code(self, market_code: str = "RELIANCE") -> tuple:
-        """Load Indian market data (Reliance only) using paper-compliant parameters."""
-        if market_code != "RELIANCE":
-            print(f"Warning: Only RELIANCE (Indian) market supported. Using RELIANCE instead of {market_code}")
-            market_code = "RELIANCE"
-            
-        print(f"Loading Indian market data (Reliance Industries)...")
+    def load_market_data_by_code(self, market_code: str = "IRFC") -> tuple:
+        """Load market data based on the market code using paper-compliant parameters."""
         
+        # Determine if it's Indian or USA market
+        if market_code in ['RELIANCE', 'IRFC']:
+            print(f"Loading Indian market data ({market_code})...")
+            loader = self.indian_market_loader  
+        else:
+            print(f"Loading USA market data ({market_code})...")
+            loader = self.usa_market_loader
+            
         # Use paper timeframe if specified in config
         if self.config.get('use_paper_timeframe', False):
             start_date = self.config.get('start_date', '2005-01-01')
@@ -94,8 +101,8 @@ class PaperCompliantPipeline:
             end_date = end_date_dt.strftime("%Y-%m-%d")
             print(f"Using {years} years timeframe: {start_date} to {end_date}")
         
-        # Download data using Indian market loader
-        price_df = self.usa_market_loader.download_market_data(market_code, start_date, end_date)
+        # Download data using appropriate market loader
+        price_df = loader.download_market_data(market_code, start_date, end_date)
         
         # Generate technical indicators using proper implementation
         features_df = self.generate_proper_features(price_df)
@@ -110,8 +117,11 @@ class PaperCompliantPipeline:
         )
         filtered_prices, eemd_metadata = denoiser.process_price_series(price_df['close'])
         
-        print(f"Indian market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
-        print(f"Price range: ₹{price_df['close'].min():.2f} - ₹{price_df['close'].max():.2f}")
+        print(f"Market data loaded: {len(price_df)} samples from {price_df.index[0].date()} to {price_df.index[-1].date()}")
+        
+        # Format price display based on market
+        currency_symbol = "₹" if market_code in ['RELIANCE', 'IRFC'] else "$"
+        print(f"Price range: {currency_symbol}{price_df['close'].min():.2f} - {currency_symbol}{price_df['close'].max():.2f}")
         print(f"EEMD metadata: {eemd_metadata}")
         
         return features_df, price_df['close'], filtered_prices

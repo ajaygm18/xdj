@@ -1,8 +1,8 @@
 {
   "data_dir": "data",
   "results_dir": "results",
-  "symbol": "^GSPC",
-  "market": "SP500",
+  "symbol": "IRFC.NS",
+  "market": "IRFC",
   "use_bayesian_optimization": true,
   "bayesian_n_calls": 50,
   "bayesian_quick_mode": false,

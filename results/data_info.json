@@ -1,15 +1,15 @@
 {
-  "market_code": "RELIANCE",
-  "total_samples": 4255,
-  "features_count": 46,
+  "market_code": "IRFC",
+  "total_samples": 289,
+  "features_count": 40,
   "data_range": {
-    "start": "2005-01-03",
+    "start": "2021-01-29",
     "end": "2022-03-30"
   },
   "price_statistics": {
-    "min": 30.09813690185547,
-    "max": 1243.0245361328125,
-    "mean": 320.4730040584972,
-    "std": 271.69799704240046
+    "min": 18.430662155151367,
+    "max": 22.894683837890625,
+    "mean": 20.8315368309153,
+    "std": 0.9315433131311008
   }
 }

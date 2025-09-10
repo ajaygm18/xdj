@@ -80,23 +80,24 @@ class USAMarketDataLoader:
 
 
 class IndianMarketDataLoader:
-    """Loads data from Indian market (Reliance Industries) - focused implementation."""
+    """Loads data from Indian market - focused implementation."""
     
-    # Indian market focus - Reliance Industries
+    # Indian market focus - Multiple stocks
     INDIAN_MARKET = {
-        'RELIANCE': 'RELIANCE.NS',    # Reliance Industries (NSE) - Primary focus
+        'RELIANCE': 'RELIANCE.NS',    # Reliance Industries (NSE)
+        'IRFC': 'IRFC.NS',           # Indian Railway Finance Corporation (NSE)
     }
     
     def __init__(self):
         """Initialize Indian market data loader."""
         pass
     
-    def download_market_data(self, market_code: str = "RELIANCE", start_date: str = "2005-01-01", end_date: str = "2022-03-31") -> pd.DataFrame:
+    def download_market_data(self, market_code: str = "IRFC", start_date: str = "2005-01-01", end_date: str = "2022-03-31") -> pd.DataFrame:
         """
-        Download Reliance Industries data (Indian market).
+        Download Indian market data.
         
         Args:
-            market_code: Market code (only 'RELIANCE' supported)
+            market_code: Market code ('RELIANCE' or 'IRFC' supported)
             start_date: Start date in 'YYYY-MM-DD' format (default: paper start)
             end_date: End date in 'YYYY-MM-DD' format (default: paper end)
             
@@ -104,8 +105,8 @@ class IndianMarketDataLoader:
             DataFrame with OHLCV data
         """
         if market_code not in self.INDIAN_MARKET:
-            print(f"Warning: Only RELIANCE (Indian) market supported. Using RELIANCE instead of {market_code}")
-            market_code = "RELIANCE"
+            print(f"Warning: Only {list(self.INDIAN_MARKET.keys())} Indian markets supported. Using IRFC instead of {market_code}")
+            market_code = "IRFC"
         
         symbol = self.INDIAN_MARKET[market_code]
         print(f"Downloading Indian market data ({symbol}) from {start_date} to {end_date}...")
