@@ -1,0 +1,45 @@
+{
+  "stock_symbol": "IRFC.NS",
+  "start_date": "2020-01-01",
+  "end_date": "2023-01-01",
+  "pipeline_steps": {
+    "data_loading": {
+      "status": "success",
+      "data_points": 477,
+      "price_range": "\u20b917.77 - \u20b934.42"
+    },
+    "technical_indicators": {
+      "status": "success",
+      "indicator_count": 40,
+      "talib_used": true
+    },
+    "eemd_denoising": {
+      "status": "success"
+    },
+    "cae_extraction": {
+      "status": "success",
+      "original_features": 45,
+      "extracted_features": 32
+    },
+    "data_preparation": {
+      "status": "success",
+      "train_samples": 381,
+      "test_samples": 96
+    },
+    "model_training": {
+      "status": "success",
+      "model_type": "PLSTM-TAL",
+      "epochs": 50
+    }
+  },
+  "accuracy_metrics": {
+    "train_accuracy": 0.5545171339563862,
+    "test_accuracy": 0.5555555555555556,
+    "precision": 0.30864197530864196,
+    "recall": 0.5555555555555556,
+    "f1_score": 0.39682539682539686
+  },
+  "model_paths": [
+    "plstm_tal_IRFC_NS_demo.pth"
+  ]
+}
