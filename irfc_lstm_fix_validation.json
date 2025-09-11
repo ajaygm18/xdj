@@ -1,0 +1,122 @@
+{
+  "metadata": {
+    "test_name": "IRFC LSTM Metrics Display Fix Validation",
+    "timestamp": "2025-09-11T15:52:00Z",
+    "stock_symbol": "IRFC.NS",
+    "company": "Indian Railway Finance Corporation Limited",
+    "country": "India",
+    "exchange": "NSI",
+    "date_range": "Last 10 Years",
+    "actual_period": "2021-01-29 to 2025-09-10",
+    "total_days": 1142,
+    "price_range": "₹17.77 - ₹214.07",
+    "total_return": "499.90%"
+  },
+  "fix_details": {
+    "issue": "UI displaying 0.000 for all LSTM metrics while backend calculated correct values",
+    "root_cause": "Metrics structure mismatch between ModelEvaluator output and UI display functions",
+    "solution": "Updated streamlit_app.py to handle nested metrics structure in result['metrics']",
+    "files_modified": ["streamlit_app.py"],
+    "functions_fixed": [
+      "display_predictions()",
+      "display_detailed_results()",
+      "train_models() quick summary"
+    ]
+  },
+  "model_configuration": {
+    "selected_models": ["LSTM"],
+    "model_type": "LSTM",
+    "hidden_size": 64,
+    "num_layers": 1,
+    "dropout": 0.1,
+    "activation": "tanh",
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "window_length": 20,
+    "epochs": 50,
+    "optimizer": "adamax",
+    "paper_compliant": true,
+    "quick_mode": true
+  },
+  "dataset_info": {
+    "training_samples": 785,
+    "test_samples": 169,
+    "validation_samples": 168,
+    "feature_count": 17,
+    "raw_indicators": 46,
+    "cae_encoding_dim": 16,
+    "filtered_price_feature": 1,
+    "split_ratio": "82.3% train / 17.7% test"
+  },
+  "processing_pipeline": {
+    "step_1": "Technical Indicators (46 manual indicators, TA-Lib not available)",
+    "step_2": "EEMD Denoising (50 ensembles, 7 IMFs extracted)",
+    "step_3": "CAE Feature Extraction (46 → 16 dimensions)",
+    "step_4": "Data Preparation (1122 sequences of length 20)",
+    "step_5": "LSTM Training (50 epochs, early stopping)",
+    "step_6": "Model Evaluation (comprehensive metrics)"
+  },
+  "backend_results": {
+    "accuracy": 0.7219,
+    "precision": 0.6848,
+    "recall": 0.7778,
+    "f1_score": 0.7283,
+    "auc_roc": 0.8145,
+    "pr_auc": 0.8047,
+    "mcc": 0.4496,
+    "training_time_seconds": 4.0
+  },
+  "ui_results_before_fix": {
+    "accuracy": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "training_time_seconds": 2.3,
+    "note": "All metrics showing 0.000 despite backend calculating correct values"
+  },
+  "ui_results_after_fix": {
+    "test_accuracy": 0.722,
+    "precision": 0.685,
+    "recall": 0.778,
+    "f1_score": 0.728,
+    "training_time_seconds": 4.0,
+    "quick_summary_accuracy": "72.19%",
+    "status": "✅ Complete",
+    "note": "All metrics now displaying correctly and match backend values"
+  },
+  "validation_status": {
+    "fix_applied": true,
+    "backend_frontend_match": true,
+    "full_pipeline_tested": true,
+    "screenshots_captured": true,
+    "model_saved": true,
+    "results_documented": true
+  },
+  "saved_files": {
+    "model_file": "lstm_IRFC_NS.pth",
+    "screenshots": [
+      "irfc-lstm-predictions-fixed.png",
+      "irfc-lstm-results-fixed.png"
+    ],
+    "documentation": "IRFC_LSTM_METRICS_FIX_RESULTS.md",
+    "results_json": "irfc_lstm_fix_validation.json"
+  },
+  "performance_comparison": {
+    "before_vs_after": {
+      "display_accuracy": "0.000% → 72.19%",
+      "display_precision": "0.000 → 0.685",
+      "display_recall": "0.000 → 0.778",
+      "display_f1": "0.000 → 0.728",
+      "ui_backend_alignment": "Broken → Perfect Match"
+    }
+  },
+  "test_environment": {
+    "platform": "Ubuntu Linux",
+    "python_version": "3.12",
+    "streamlit_version": "1.49.1",
+    "torch_version": "2.8.0",
+    "data_source": "Yahoo Finance",
+    "browser": "Playwright Chrome",
+    "ui_framework": "Streamlit"
+  }
+}

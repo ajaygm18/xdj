@@ -838,7 +838,11 @@ def train_models(stock_data, symbol, selected_models, model_config, use_bayesian
                 if model_name.lower().replace('-', '_').replace(' ', '_') + '_result' in results:
                     result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
                     result = results[result_key]['result']
-                    if isinstance(result, dict):
+                    
+                    # Extract accuracy from the correct structure
+                    if isinstance(result, dict) and 'metrics' in result:
+                        accuracy = result['metrics'].get('accuracy', 0)
+                    elif isinstance(result, dict):
                         accuracy = result.get('test_accuracy', 0)
                     else:
                         accuracy = result.test_accuracy if hasattr(result, 'test_accuracy') else 0
@@ -876,8 +880,20 @@ def display_predictions():
             model_info = model_results[result_key]
             result = model_info['result']
             
-            if isinstance(result, dict):
-                # For traditional ML models
+            # Extract metrics from the result structure
+            if isinstance(result, dict) and 'metrics' in result:
+                # For models evaluated with ModelEvaluator
+                metrics = result['metrics']
+                metrics_data.append({
+                    'Model': model_name,
+                    'Accuracy': f"{metrics.get('accuracy', 0):.3f}",
+                    'Precision': f"{metrics.get('precision', 0):.3f}",
+                    'Recall': f"{metrics.get('recall', 0):.3f}",
+                    'F1-Score': f"{metrics.get('f1_score', 0):.3f}",
+                    'Training Time (s)': f"{training_times.get(model_name, 0):.1f}"
+                })
+            elif isinstance(result, dict):
+                # For traditional ML models with direct metric storage
                 metrics_data.append({
                     'Model': model_name,
                     'Accuracy': f"{result.get('test_accuracy', 0):.3f}",
@@ -887,7 +903,7 @@ def display_predictions():
                     'Training Time (s)': f"{training_times.get(model_name, 0):.1f}"
                 })
             else:
-                # For neural network models
+                # Legacy support for object-style results
                 accuracy = result.test_accuracy if hasattr(result, 'test_accuracy') else 0
                 precision = result.precision if hasattr(result, 'precision') else 0
                 recall = result.recall if hasattr(result, 'recall') else 0
@@ -920,7 +936,10 @@ def display_predictions():
                     model_info = model_results[result_key]
                     result = model_info['result']
                     
-                    if isinstance(result, dict):
+                    # Extract accuracy from the correct structure
+                    if isinstance(result, dict) and 'metrics' in result:
+                        accuracy = result['metrics'].get('accuracy', 0)
+                    elif isinstance(result, dict):
                         accuracy = result.get('test_accuracy', 0)
                     else:
                         accuracy = result.test_accuracy if hasattr(result, 'test_accuracy') else 0
@@ -1026,8 +1045,19 @@ def display_detailed_results():
                 training_time = results['training_times'].get(model_name, 0)
                 
                 # Display metrics
-                if isinstance(result, dict):
-                    metrics = {
+                if isinstance(result, dict) and 'metrics' in result:
+                    # For models evaluated with ModelEvaluator
+                    metrics = result['metrics']
+                    metrics_dict = {
+                        'Test Accuracy': f"{metrics.get('accuracy', 0):.3f}",
+                        'Precision': f"{metrics.get('precision', 0):.3f}",
+                        'Recall': f"{metrics.get('recall', 0):.3f}",
+                        'F1-Score': f"{metrics.get('f1_score', 0):.3f}",
+                        'Training Time': f"{training_time:.1f}s"
+                    }
+                elif isinstance(result, dict):
+                    # For traditional ML models with direct metric storage
+                    metrics_dict = {
                         'Test Accuracy': f"{result.get('test_accuracy', 0):.3f}",
                         'Precision': f"{result.get('precision', 0):.3f}",
                         'Recall': f"{result.get('recall', 0):.3f}",
@@ -1035,7 +1065,8 @@ def display_detailed_results():
                         'Training Time': f"{training_time:.1f}s"
                     }
                 else:
-                    metrics = {
+                    # Legacy support for object-style results
+                    metrics_dict = {
                         'Test Accuracy': f"{result.test_accuracy:.3f}" if hasattr(result, 'test_accuracy') else "N/A",
                         'Precision': f"{result.precision:.3f}" if hasattr(result, 'precision') else "N/A",
                         'Recall': f"{result.recall:.3f}" if hasattr(result, 'recall') else "N/A",
@@ -1043,8 +1074,8 @@ def display_detailed_results():
                         'Training Time': f"{training_time:.1f}s"
                     }
                 
-                metric_cols = st.columns(len(metrics))
-                for i, (metric, value) in enumerate(metrics.items()):
+                metric_cols = st.columns(len(metrics_dict))
+                for i, (metric, value) in enumerate(metrics_dict.items()):
                     with metric_cols[i]:
                         st.metric(metric, value)
                 
@@ -1106,9 +1137,23 @@ def display_detailed_results():
                 model_info = model_results[result_key]
                 result = model_info['result']
                 
-                if isinstance(result, dict):
+                if isinstance(result, dict) and 'metrics' in result:
+                    # For models evaluated with ModelEvaluator
+                    metrics = result['metrics']
+                    download_results['model_performance'][model_name] = {
+                        'test_accuracy': metrics.get('accuracy', 0),
+                        'precision': metrics.get('precision', 0),
+                        'recall': metrics.get('recall', 0),
+                        'f1_score': metrics.get('f1_score', 0),
+                        'auc_roc': metrics.get('auc_roc', 0),
+                        'pr_auc': metrics.get('pr_auc', 0),
+                        'mcc': metrics.get('mcc', 0)
+                    }
+                elif isinstance(result, dict):
+                    # For traditional ML models with direct metric storage
                     download_results['model_performance'][model_name] = result
                 else:
+                    # Legacy support for object-style results
                     download_results['model_performance'][model_name] = {
                         'test_accuracy': result.test_accuracy if hasattr(result, 'test_accuracy') else 0,
                         'precision': result.precision if hasattr(result, 'precision') else 0,
