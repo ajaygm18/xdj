@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-09-11T18:12:50.710660",
+  "symbol": "IRFC.NS",
+  "individual_forecast": {
+    "current_price": 45.3,
+    "predicted_price": 47.85,
+    "direction": "\ud83d\udcc8 UP",
+    "movement_percent": 5.64,
+    "confidence": 73.2,
+    "prediction_binary": 1,
+    "movement_str": "+5.64%",
+    "model_name": "LSTM",
+    "symbol": "IRFC.NS"
+  },
+  "consensus_forecast": {
+    "individual_forecasts": [
+      {
+        "model_name": "LSTM",
+        "predicted_price": 47.85,
+        "confidence": 73.2,
+        "prediction_binary": 1,
+        "direction": "\ud83d\udcc8 UP"
+      },
+      {
+        "model_name": "PLSTM-TAL",
+        "predicted_price": 46.9,
+        "confidence": 68.7,
+        "prediction_binary": 1,
+        "direction": "\ud83d\udcc8 UP"
+      },
+      {
+        "model_name": "CNN",
+        "predicted_price": 44.8,
+        "confidence": 61.3,
+        "prediction_binary": 0,
+        "direction": "\ud83d\udcc9 DOWN"
+      }
+    ],
+    "consensus": {
+      "direction": "\ud83d\udcc8 UP",
+      "avg_predicted_price": 46.51666666666667,
+      "movement_percent": 2.68579838116264,
+      "avg_confidence": 67.73333333333333,
+      "up_votes": 2,
+      "down_votes": 1
+    }
+  }
+}
