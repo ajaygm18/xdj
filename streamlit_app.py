@@ -161,12 +161,15 @@ def main():
     # Preset date ranges
     date_preset = st.sidebar.selectbox(
         "Preset Range:",
-        ["Last 2 Years", "Paper Default (2005-2022)", "Last 5 Years", "Last 3 Years", "Last 1 Year", "Custom"]
+        ["Last 10 Years", "Last 5 Years", "Last 3 Years", "Last 2 Years", "Last 1 Year", "Paper Default (2005-2022)", "Custom"]
     )
     
     if date_preset == "Paper Default (2005-2022)":
         start_date = "2005-01-01"
         end_date = "2022-03-31"
+    elif date_preset == "Last 10 Years":
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=10*365)).strftime("%Y-%m-%d")
     elif date_preset == "Last 5 Years":
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=5*365)).strftime("%Y-%m-%d")
