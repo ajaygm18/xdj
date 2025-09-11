@@ -1,16 +1,15 @@
 {
-  "symbol": "^GSPC",
-  "years": 10,
-  "total_samples": 2510,
-  "features_count": 46,
+  "market_code": "IRFC",
+  "total_samples": 289,
+  "features_count": 40,
   "data_range": {
-    "start": "2015-09-08",
-    "end": "2025-08-29"
+    "start": "2021-01-29",
+    "end": "2022-03-30"
   },
   "price_statistics": {
-    "min": 1829.0799560546875,
-    "max": 6501.85986328125,
-    "mean": 3614.0455967633375,
-    "std": 1204.0685877189428
+    "min": 18.430662155151367,
+    "max": 22.894683837890625,
+    "mean": 20.8315368309153,
+    "std": 0.9315433131311008
   }
 }

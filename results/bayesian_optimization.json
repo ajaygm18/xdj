@@ -1,0 +1,30 @@
+{
+  "best_params": {
+    "hidden_size": "108",
+    "dropout": 0.09585869746654097,
+    "num_layers": "3",
+    "learning_rate": 0.0060088165636702235,
+    "batch_size": "46",
+    "window_length": "13",
+    "cae_hidden_dim": "76",
+    "cae_encoding_dim": "16",
+    "cae_lambda_reg": 0.0001514381497427214,
+    "optimizer": "adamax",
+    "activation": "tanh"
+  },
+  "best_score": -1.0,
+  "optimization_summary": "No optimization results available.",
+  "paper_params": {
+    "hidden_size": 64,
+    "dropout": 0.1,
+    "num_layers": 1,
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "window_length": 20,
+    "cae_hidden_dim": 64,
+    "cae_encoding_dim": 16,
+    "cae_lambda_reg": 0.0001,
+    "optimizer": "adamax",
+    "activation": "tanh"
+  }
+}
