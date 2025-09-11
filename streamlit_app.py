@@ -932,6 +932,82 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
         'probabilities': y_proba
     }
 
+def make_future_prediction(model, features_df, prices, window_length, model_name, symbol):
+    """
+    Make a future price prediction for the next trading period.
+    
+    Args:
+        model: Trained model
+        features_df: Technical indicators DataFrame
+        prices: Price series
+        window_length: Sequence window length
+        model_name: Name of the model for logging
+        symbol: Stock symbol
+        
+    Returns:
+        Dictionary with future prediction information
+    """
+    try:
+        # Get the latest sequence for prediction
+        latest_features = features_df.iloc[-window_length:].values
+        latest_prices = prices[-window_length:]
+        
+        # Prepare input tensor
+        if hasattr(model, 'predict_proba'):  # Sklearn models
+            # For sklearn models, flatten the sequence
+            X_latest = latest_features.reshape(1, -1)
+            prediction_proba = model.predict_proba(X_latest)[0]
+            prediction_binary = model.predict(X_latest)[0]
+        else:  # PyTorch models
+            import torch
+            X_latest = torch.FloatTensor(latest_features).unsqueeze(0)
+            
+            model.eval()
+            with torch.no_grad():
+                outputs = model(X_latest)
+                if hasattr(outputs, 'logits'):
+                    outputs = outputs.logits
+                
+                # Convert to probabilities
+                probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
+                prediction_binary = np.argmax(probs)
+                prediction_proba = probs[1] if len(probs) > 1 else probs[0]
+        
+        # Calculate predicted price movement
+        current_price = float(prices.iloc[-1])
+        
+        # Estimate movement magnitude based on recent volatility
+        recent_returns = np.diff(np.log(prices[-20:]))  # Last 20 periods
+        avg_volatility = np.std(recent_returns)
+        
+        # Scale movement by confidence and volatility
+        movement_magnitude = avg_volatility * prediction_proba
+        
+        if prediction_binary == 1:  # Predicted increase
+            predicted_price = current_price * (1 + movement_magnitude)
+            direction = "📈 UP"
+            movement = f"+{movement_magnitude*100:.2f}%"
+        else:  # Predicted decrease
+            predicted_price = current_price * (1 - movement_magnitude)
+            direction = "📉 DOWN"
+            movement = f"-{movement_magnitude*100:.2f}%"
+        
+        return {
+            'current_price': current_price,
+            'predicted_price': predicted_price,
+            'direction': direction,
+            'movement_percent': movement_magnitude * 100,
+            'confidence': prediction_proba * 100,
+            'prediction_binary': prediction_binary,
+            'movement_str': movement,
+            'model_name': model_name,
+            'symbol': symbol
+        }
+        
+    except Exception as e:
+        st.error(f"Error making future prediction with {model_name}: {str(e)}")
+        return None
+
 def plot_prediction_comparison(actual_prices, predicted_prices, dates, model_name, symbol):
     """
     Create a comparison plot of actual vs predicted prices.
@@ -1132,10 +1208,125 @@ def display_predictions():
         
         st.success(f"🏆 Best performing model: **{best_model}** with {best_accuracy:.1%} accuracy")
         
-        # NEW: Add price prediction visualization
-        st.subheader("📈 Stock Price Predictions")
+        # NEW: Add future forecasting section
+        st.subheader("🔮 Future Price Forecasting")
         
-        # Check if we have the required data for price predictions
+        # Check if we have the required data for future predictions
+        if 'test_data' in results and 'price_data' in results and st.session_state.stock_data is not None:
+            st.info("🎯 **Next Trading Period Forecast** - What the models predict will happen next")
+            
+            # Generate technical indicators for the latest data
+            if TALIB_AVAILABLE:
+                try:
+                    indicators = TechnicalIndicatorsTA()
+                except ImportError:
+                    indicators = TechnicalIndicators()
+            else:
+                indicators = TechnicalIndicators()
+            
+            latest_features_df = indicators.compute_features(st.session_state.stock_data)
+            
+            # Create forecast display for each model
+            forecast_cols = st.columns(len(selected_models))
+            
+            for i, model_name in enumerate(selected_models):
+                with forecast_cols[i]:
+                    result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
+                    
+                    if result_key in model_results:
+                        model_info = model_results[result_key]
+                        model = model_info['model']
+                        
+                        # Make future prediction
+                        future_pred = make_future_prediction(
+                            model, 
+                            latest_features_df, 
+                            st.session_state.stock_data['close'], 
+                            results['model_config']['window_length'],
+                            model_name,
+                            results['symbol']
+                        )
+                        
+                        if future_pred:
+                            # Display forecast card
+                            st.markdown(f"""
+                            <div style="
+                                border: 2px solid {'#28a745' if future_pred['prediction_binary'] == 1 else '#dc3545'};
+                                border-radius: 10px;
+                                padding: 15px;
+                                background: {'#d4f7dc' if future_pred['prediction_binary'] == 1 else '#f8d7da'};
+                                margin: 10px 0;
+                                text-align: center;
+                            ">
+                                <h4 style="margin: 0; color: #333;">{model_name} Forecast</h4>
+                                <div style="font-size: 24px; margin: 10px 0;">{future_pred['direction']}</div>
+                                <div style="font-size: 18px; color: #666; margin: 5px 0;">
+                                    <strong>Current:</strong> ${future_pred['current_price']:.2f}
+                                </div>
+                                <div style="font-size: 18px; color: #666; margin: 5px 0;">
+                                    <strong>Predicted:</strong> ${future_pred['predicted_price']:.2f}
+                                </div>
+                                <div style="font-size: 16px; color: #888; margin: 5px 0;">
+                                    <strong>Movement:</strong> {future_pred['movement_str']}
+                                </div>
+                                <div style="font-size: 14px; color: #888; margin: 5px 0;">
+                                    <strong>Confidence:</strong> {future_pred['confidence']:.1f}%
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.error(f"Unable to generate forecast for {model_name}")
+            
+            # Add a summary forecast if multiple models
+            if len(selected_models) > 1:
+                st.subheader("📊 Consensus Forecast")
+                
+                # Collect all predictions
+                all_forecasts = []
+                for model_name in selected_models:
+                    result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
+                    if result_key in model_results:
+                        model_info = model_results[result_key]
+                        model = model_info['model']
+                        
+                        future_pred = make_future_prediction(
+                            model, 
+                            latest_features_df, 
+                            st.session_state.stock_data['close'], 
+                            results['model_config']['window_length'],
+                            model_name,
+                            results['symbol']
+                        )
+                        
+                        if future_pred:
+                            all_forecasts.append(future_pred)
+                
+                if all_forecasts:
+                    # Calculate consensus
+                    avg_predicted_price = np.mean([f['predicted_price'] for f in all_forecasts])
+                    avg_confidence = np.mean([f['confidence'] for f in all_forecasts])
+                    up_votes = sum([1 for f in all_forecasts if f['prediction_binary'] == 1])
+                    down_votes = len(all_forecasts) - up_votes
+                    
+                    consensus_direction = "📈 UP" if up_votes > down_votes else "📉 DOWN"
+                    current_price = all_forecasts[0]['current_price']
+                    movement_pct = ((avg_predicted_price - current_price) / current_price) * 100
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Consensus Direction", consensus_direction)
+                    with col2:
+                        st.metric("Average Predicted Price", f"${avg_predicted_price:.2f}")
+                    with col3:
+                        st.metric("Average Confidence", f"{avg_confidence:.1f}%")
+                    
+                    # Show voting breakdown
+                    st.write(f"**Model Voting:** {up_votes} models predict UP ⬆️, {down_votes} models predict DOWN ⬇️")
+        
+        # NEW: Add historical price prediction visualization
+        st.subheader("📈 Historical Price Predictions vs Actual")
+        
+        # Check if we have the required data for historical price predictions
         if 'test_data' in results and 'price_data' in results:
             price_data = results['price_data']
             test_data = results['test_data']
@@ -1165,14 +1356,14 @@ def display_predictions():
                                 y_pred, y_proba, 
                                 price_data['prices'], 
                                 price_data['test_start_idx'],
-                                model_config['window_length']
+                                results['model_config']['window_length']
                             )
                             
                             # Create prediction vs actual plot
                             if len(price_pred_data['actual_prices']) > 0:
                                 # Get corresponding dates for the test period
-                                test_dates = price_data['dates'][price_data['test_start_idx'] + model_config['window_length']:
-                                                                price_data['test_start_idx'] + model_config['window_length'] + len(y_pred)]
+                                test_dates = price_data['dates'][price_data['test_start_idx'] + results['model_config']['window_length']:
+                                                                price_data['test_start_idx'] + results['model_config']['window_length'] + len(y_pred)]
                                 
                                 fig = plot_prediction_comparison(
                                     price_pred_data['actual_prices'],
