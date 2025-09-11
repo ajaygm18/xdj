@@ -932,13 +932,13 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
         'probabilities': y_proba
     }
 
-def make_future_prediction(model, features_df, prices, window_length, model_name, symbol):
+def make_future_prediction(model, preprocessed_features, prices, window_length, model_name, symbol):
     """
     Make a future price prediction for the next trading period.
     
     Args:
         model: Trained model
-        features_df: Technical indicators DataFrame
+        preprocessed_features: Already preprocessed feature matrix (same format as training data)
         prices: Price series
         window_length: Sequence window length
         model_name: Name of the model for logging
@@ -948,8 +948,14 @@ def make_future_prediction(model, features_df, prices, window_length, model_name
         Dictionary with future prediction information
     """
     try:
-        # Get the latest sequence for prediction
-        latest_features = features_df.iloc[-window_length:].values
+        # Get the latest sequence for prediction - use the last window from preprocessed features
+        if len(preprocessed_features.shape) == 3:
+            # Features are already in sequence format (samples, timesteps, features)
+            latest_features = preprocessed_features[-1]  # Get the last sequence
+        else:
+            # Features need to be shaped into sequence
+            latest_features = preprocessed_features[-window_length:].values
+        
         latest_prices = prices[-window_length:]
         
         # Prepare input tensor
@@ -960,7 +966,8 @@ def make_future_prediction(model, features_df, prices, window_length, model_name
             prediction_binary = model.predict(X_latest)[0]
         else:  # PyTorch models
             import torch
-            X_latest = torch.FloatTensor(latest_features).unsqueeze(0)
+            # For LSTM models, we need proper sequence shape: (batch_size, sequence_length, features)
+            X_latest = torch.FloatTensor(latest_features).unsqueeze(0)  # Shape: (1, window_length, num_features)
             
             model.eval()
             with torch.no_grad():
@@ -1237,10 +1244,11 @@ def display_predictions():
                         model_info = model_results[result_key]
                         model = model_info['model']
                         
-                        # Make future prediction
+                        # Make future prediction using test data format
+                        test_data = results['test_data']
                         future_pred = make_future_prediction(
                             model, 
-                            latest_features_df, 
+                            test_data['X_test'],  # Use preprocessed test features 
                             st.session_state.stock_data['close'], 
                             results['model_config']['window_length'],
                             model_name,
@@ -1283,6 +1291,7 @@ def display_predictions():
                 
                 # Collect all predictions
                 all_forecasts = []
+                test_data = results['test_data']  # Get test data for preprocessed features
                 for model_name in selected_models:
                     result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
                     if result_key in model_results:
@@ -1291,7 +1300,7 @@ def display_predictions():
                         
                         future_pred = make_future_prediction(
                             model, 
-                            latest_features_df, 
+                            test_data['X_test'],  # Use preprocessed test features
                             st.session_state.stock_data['close'], 
                             results['model_config']['window_length'],
                             model_name,
