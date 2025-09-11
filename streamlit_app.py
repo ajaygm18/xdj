@@ -975,10 +975,22 @@ def make_future_prediction(model, preprocessed_features, prices, window_length, 
                 if hasattr(outputs, 'logits'):
                     outputs = outputs.logits
                 
-                # Convert to probabilities
-                probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
-                prediction_binary = np.argmax(probs)
-                prediction_proba = probs[1] if len(probs) > 1 else probs[0]
+                # Convert to probabilities - handle different output dimensions
+                if len(outputs.shape) == 1:
+                    # Single output (binary classification)
+                    probs = torch.sigmoid(outputs).cpu().numpy()
+                    prediction_proba = probs[0] if len(probs) > 0 else 0.5
+                    prediction_binary = 1 if prediction_proba > 0.5 else 0
+                elif len(outputs.shape) == 2 and outputs.shape[1] == 1:
+                    # Shape: (batch_size, 1) - single output per sample
+                    probs = torch.sigmoid(outputs).cpu().numpy()[0]
+                    prediction_proba = probs[0] if len(probs) > 0 else 0.5
+                    prediction_binary = 1 if prediction_proba > 0.5 else 0
+                else:
+                    # Multi-class output
+                    probs = torch.softmax(outputs, dim=-1).cpu().numpy()[0]
+                    prediction_binary = np.argmax(probs)
+                    prediction_proba = probs[1] if len(probs) > 1 else probs[0]
         
         # Calculate predicted price movement
         current_price = float(prices.iloc[-1])
