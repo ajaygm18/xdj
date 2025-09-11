@@ -39,10 +39,13 @@ except ImportError:
 # Import indicators (try TA-Lib first, fallback to manual)
 try:
     from src.indicators_talib import TechnicalIndicatorsTA
+    # Test if TA-Lib actually works
+    TechnicalIndicatorsTA()
     TALIB_AVAILABLE = True
-except ImportError:
-    from src.indicators import TechnicalIndicators
+except (ImportError, Exception):
     TALIB_AVAILABLE = False
+
+from src.indicators import TechnicalIndicators
 
 # Set page config
 st.set_page_config(
@@ -342,8 +345,12 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             progress_bar.progress(10)
             
             if TALIB_AVAILABLE:
-                indicators = TechnicalIndicatorsTA()
-                st.info("Using TA-Lib for paper-compliant indicators")
+                try:
+                    indicators = TechnicalIndicatorsTA()
+                    st.info("Using TA-Lib for paper-compliant indicators")
+                except ImportError:
+                    indicators = TechnicalIndicators()
+                    st.warning("TA-Lib not available, using manual indicators")
             else:
                 indicators = TechnicalIndicators()
                 st.warning("Using manual indicators (TA-Lib not available)")
