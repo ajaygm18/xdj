@@ -23,6 +23,7 @@ sys.path.insert(0, src_dir)
 # Import our modules
 from src.custom_stock_loader import CustomStockDataLoader
 from src.model_plstm_tal import PLSTM_TAL
+from src.enhanced_plstm_tal import EnhancedPLSTM_TAL, create_enhanced_model
 from src.baselines import BaselineModelFactory
 from src.cae import CAEFeatureExtractor
 from src.train import DataPreprocessor, ModelTrainer
