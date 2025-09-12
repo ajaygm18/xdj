@@ -148,9 +148,10 @@ class PeepholeLSTM(nn.Module):
                 cell_input_size = hidden_size * (2 if bidirectional else 1)
             
             if bidirectional:
-                forward_cell = PeepholeLSTMCell(cell_input_size, hidden_size)
-                backward_cell = PeepholeLSTMCell(cell_input_size, hidden_size)
-                self.cells.append(nn.ModuleList([forward_cell, backward_cell]))
+                self.cells.append(nn.ModuleDict({
+                    'forward': PeepholeLSTMCell(cell_input_size, hidden_size),
+                    'backward': PeepholeLSTMCell(cell_input_size, hidden_size)
+                }))
             else:
                 self.cells.append(PeepholeLSTMCell(cell_input_size, hidden_size))
         
@@ -198,16 +199,14 @@ class PeepholeLSTM(nn.Module):
                 forward_outputs = []
                 backward_outputs = []
                 
-                forward_cell, backward_cell = self.cells[layer]
-                
                 # Forward pass
                 for t in range(seq_len):
-                    h_f, c_f = forward_cell(current_input[t], (h_f, c_f))
+                    h_f, c_f = self.cells[layer]['forward'](current_input[t], (h_f, c_f))
                     forward_outputs.append(h_f)
                 
                 # Backward pass
                 for t in reversed(range(seq_len)):
-                    h_b, c_b = backward_cell(current_input[t], (h_b, c_b))
+                    h_b, c_b = self.cells[layer]['backward'](current_input[t], (h_b, c_b))
                     backward_outputs.insert(0, h_b)
                 
                 # Concatenate forward and backward outputs
@@ -219,10 +218,8 @@ class PeepholeLSTM(nn.Module):
                 h = initial_hidden[0][layer]
                 c = initial_hidden[1][layer]
                 
-                cell = self.cells[layer]
-                
                 for t in range(seq_len):
-                    h, c = cell(current_input[t], (h, c))
+                    h, c = self.cells[layer](current_input[t], (h, c))
                     layer_outputs.append(h)
             
             # Stack outputs for this layer
