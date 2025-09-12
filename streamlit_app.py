@@ -161,7 +161,7 @@ def main():
     # Preset date ranges
     date_preset = st.sidebar.selectbox(
         "Preset Range:",
-        ["Last 10 Years", "Last 5 Years", "Last 3 Years", "Last 2 Years", "Last 1 Year", "Paper Default (2005-2022)", "Custom"]
+        ["Last 5 Years", "Last 10 Years", "Last 3 Years", "Last 2 Years", "Last 1 Year", "Paper Default (2005-2022)", "Custom"]
     )
     
     if date_preset == "Paper Default (2005-2022)":
@@ -208,16 +208,16 @@ def main():
     use_paper_params = st.sidebar.checkbox("Use Paper-Compliant Parameters", value=True)
     
     if use_paper_params:
-        # Paper-compliant parameters (fixed)
+        # Paper-compliant parameters (improved for better performance)
         model_config = {
-            'hidden_size': 64,
+            'hidden_size': 128,    # Increased from 64 for better capacity
             'num_layers': 1,
-            'dropout': 0.1,
+            'dropout': 0.2,        # Increased from 0.1 for better regularization
             'activation': 'tanh',
             'learning_rate': 1e-3,
             'batch_size': 32,
             'window_length': 20,
-            'epochs': 100,
+            'epochs': 150,         # Increased from 100 for more thorough training
             'optimizer': 'adamax'
         }
         st.sidebar.info("Using paper-compliant PLSTM-TAL parameters")
@@ -240,7 +240,7 @@ def main():
         use_bayesian = st.checkbox("Enable Bayesian Optimization", value=False) if BAYESIAN_AVAILABLE else False
         if not BAYESIAN_AVAILABLE:
             st.warning("⚠️ Bayesian optimization not available (scikit-optimize not installed)")
-        use_quick_mode = st.checkbox("Quick Mode (Faster Training)", value=True)
+        use_quick_mode = st.checkbox("Quick Mode (Faster Training)", value=False)  # Default to False for better performance
         save_model = st.checkbox("Save Trained Model", value=True)
     
     # Main content area
@@ -481,10 +481,10 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             # Train and evaluate baselines for comparison
             baseline_results = {}
             
-            # LSTM baseline
-            lstm_model = BaselineModelFactory.create_model('lstm', input_size, hidden_size=32, dropout=0.1)
+            # LSTM baseline with improved configuration
+            lstm_model = BaselineModelFactory.create_model('lstm', input_size, hidden_size=model_config['hidden_size'], dropout=model_config['dropout'])
             lstm_trainer = ModelTrainer(lstm_model)
-            lstm_trainer.train(X_train, y_train, X_val, y_val, epochs=training_epochs//2, batch_size=32, learning_rate=1e-3, optimizer_name='adamax')
+            lstm_trainer.train(X_train, y_train, X_val, y_val, epochs=training_epochs, batch_size=32, learning_rate=1e-3, optimizer_name='adamax')
             baseline_results['LSTM'] = evaluator.evaluate_model(lstm_model, X_test, y_test, "LSTM", is_torch_model=True)
             
             # SVM baseline
