@@ -210,15 +210,15 @@ def main():
     if use_paper_params:
         # Paper-compliant parameters (improved for better performance)
         model_config = {
-            'hidden_size': 128,    # Increased from 64 for better capacity
+            'hidden_size': 64,     # Restored to original size but with better training
             'num_layers': 1,
-            'dropout': 0.2,        # Increased from 0.1 for better regularization
+            'dropout': 0.2,        # Slightly higher dropout for better generalization
             'activation': 'tanh',
-            'learning_rate': 1e-3,
+            'learning_rate': 5e-4, # Reduced learning rate for stability
             'batch_size': 32,
             'window_length': 20,
-            'epochs': 150,         # Increased from 100 for more thorough training
-            'optimizer': 'adamax'
+            'epochs': 200,         # More epochs for better convergence
+            'optimizer': 'adam'    # Switch to Adam for better convergence
         }
         st.sidebar.info("Using paper-compliant PLSTM-TAL parameters")
     else:
@@ -457,7 +457,7 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             
             plstm_trainer = ModelTrainer(plstm_model)
             # Use more epochs for better accuracy as requested
-            training_epochs = model_config['epochs'] * 2 if not use_quick_mode else model_config['epochs']
+            training_epochs = model_config['epochs']
             
             plstm_history = plstm_trainer.train(
                 X_train, y_train, X_val, y_val,
@@ -465,7 +465,7 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
                 batch_size=model_config['batch_size'],
                 learning_rate=model_config['learning_rate'],
                 optimizer_name=model_config['optimizer'],
-                early_stopping_patience=50  # Increased patience for better convergence
+                early_stopping_patience=100  # Much higher patience for better convergence
             )
             
             # Step 6: Model evaluation

@@ -29,23 +29,23 @@
   "training": {
     "window_length": 20,
     "step_size": 1,
-    "epochs": 200,
+    "epochs": 150,
     "batch_size": 32,
-    "learning_rate": 1e-3,
-    "optimizer": "adamax",
+    "learning_rate": 5e-4,
+    "optimizer": "adam",
     "patience": 50
   },
   "plstm_tal": {
-    "hidden_size": 64,
+    "hidden_size": 32,
     "num_layers": 1,
     "dropout": 0.1,
     "activation": "tanh"
   },
   "baselines": {
-    "epochs": 200,
+    "epochs": 150,
     "dropout": 0.1,
     "cnn_filters": 32,
-    "lstm_hidden": 64,
+    "lstm_hidden": 32,
     "rf_trees": 100,
     "rf_depth": 10,
     "rf_min_split": 5,
