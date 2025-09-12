@@ -306,8 +306,6 @@ class ModelTrainer:
             optimizer = optim.Adamax(self.model.parameters(), lr=learning_rate)
         elif optimizer_name.lower() == 'adam':
             optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
-        elif optimizer_name.lower() == 'adamw':
-            optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=1e-5)
         elif optimizer_name.lower() == 'sgd':
             optimizer = optim.SGD(self.model.parameters(), lr=learning_rate, momentum=0.9)
         else:
