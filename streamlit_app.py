@@ -382,7 +382,7 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             status_text.text("Step 2/6: Applying EEMD denoising...")
             progress_bar.progress(20)
             
-            denoiser = EEMDDenoiser(n_ensembles=50, noise_scale=0.2, w=7)
+            denoiser = EEMDDenoiser(n_ensembles=10, noise_scale=0.2, w=7)
             filtered_prices, eemd_metadata = denoiser.process_price_series(stock_data['close'])
             
             # Step 3: CAE feature extraction
@@ -456,7 +456,8 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             )
             
             plstm_trainer = ModelTrainer(plstm_model)
-            training_epochs = model_config['epochs'] // 2 if use_quick_mode else model_config['epochs']
+            # Use more epochs for better accuracy as requested
+            training_epochs = model_config['epochs'] * 2 if not use_quick_mode else model_config['epochs']
             
             plstm_history = plstm_trainer.train(
                 X_train, y_train, X_val, y_val,
@@ -464,7 +465,7 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
                 batch_size=model_config['batch_size'],
                 learning_rate=model_config['learning_rate'],
                 optimizer_name=model_config['optimizer'],
-                early_stopping_patience=20
+                early_stopping_patience=50  # Increased patience for better convergence
             )
             
             # Step 6: Model evaluation
@@ -571,7 +572,7 @@ def train_models(stock_data, symbol, selected_models, model_config, use_bayesian
             status_text.text("Step 2/6: Applying EEMD denoising...")
             progress_bar.progress(20)
             
-            denoiser = EEMDDenoiser(n_ensembles=50, noise_scale=0.2, w=7)
+            denoiser = EEMDDenoiser(n_ensembles=10, noise_scale=0.2, w=7)
             filtered_prices, eemd_metadata = denoiser.process_price_series(stock_data['close'])
             
             # Step 3: CAE feature extraction

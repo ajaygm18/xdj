@@ -13,7 +13,7 @@
   "use_paper_compliant_labeling": true,
   "use_exact_40_indicators": true,
   "eemd": {
-    "n_ensembles": 100,
+    "n_ensembles": 10,
     "noise_scale": 0.2,
     "w": 7
   },
@@ -29,11 +29,11 @@
   "training": {
     "window_length": 20,
     "step_size": 1,
-    "epochs": 100,
+    "epochs": 200,
     "batch_size": 32,
     "learning_rate": 1e-3,
     "optimizer": "adamax",
-    "patience": 20
+    "patience": 50
   },
   "plstm_tal": {
     "hidden_size": 64,
@@ -42,7 +42,7 @@
     "activation": "tanh"
   },
   "baselines": {
-    "epochs": 100,
+    "epochs": 200,
     "dropout": 0.1,
     "cnn_filters": 32,
     "lstm_hidden": 64,
