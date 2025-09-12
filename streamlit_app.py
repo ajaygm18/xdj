@@ -886,6 +886,9 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
     """
     Convert binary predictions back to price movement predictions.
     
+    FIXED: This function was causing terrible predictions due to compounding errors.
+    Now uses actual prices as base for each prediction instead of previous predicted prices.
+    
     Args:
         y_pred_binary: Binary predictions (0/1)
         y_proba: Prediction probabilities 
@@ -900,29 +903,34 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
     actual_test_start = test_start_idx + window_length
     actual_prices = original_prices[actual_test_start:actual_test_start + len(y_pred_binary)]
     
-    # Calculate actual returns for the test period
-    if len(actual_prices) > 1:
+    # Calculate average volatility for scaling (instead of individual returns)
+    if len(actual_prices) > 10:  # Need enough data for reliable volatility
         actual_returns = np.diff(np.log(actual_prices))
+        avg_volatility = np.std(actual_returns)
     else:
-        actual_returns = np.array([0])
+        avg_volatility = 0.01  # Default volatility if insufficient data
     
     # Convert binary predictions to predicted price movements
     predicted_movements = []
-    predicted_prices = [actual_prices[0]]  # Start with first actual price
+    predicted_prices = []
     
     for i, (pred, prob) in enumerate(zip(y_pred_binary, y_proba)):
-        if i < len(actual_returns):
-            # Use probability to scale the predicted movement
-            movement_magnitude = abs(actual_returns[i]) * prob
+        if i < len(actual_prices):
+            # CRITICAL FIX: Use actual price as base, not previous predicted price
+            current_actual = actual_prices[i]
             
-            # Direction based on binary prediction
+            # Use average volatility scaled by confidence and reduced to prevent extreme predictions
+            movement_magnitude = avg_volatility * prob * 0.5  # Scale down for more realistic predictions
+            
+            # Apply direction based on binary prediction
             if pred == 1:  # Predicted increase
-                predicted_price = predicted_prices[-1] * (1 + movement_magnitude)
+                predicted_price = current_actual * (1 + movement_magnitude)
+                predicted_movements.append(movement_magnitude)
             else:  # Predicted decrease
-                predicted_price = predicted_prices[-1] * (1 - movement_magnitude)
+                predicted_price = current_actual * (1 - movement_magnitude)
+                predicted_movements.append(-movement_magnitude)
                 
             predicted_prices.append(predicted_price)
-            predicted_movements.append(movement_magnitude if pred == 1 else -movement_magnitude)
     
     return {
         'actual_prices': actual_prices,
@@ -935,6 +943,8 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
 def make_future_prediction(model, preprocessed_features, prices, window_length, model_name, symbol):
     """
     Make a future price prediction for the next trading period.
+    
+    FIXED: Improved prediction logic to avoid extreme price predictions.
     
     Args:
         model: Trained model
@@ -995,12 +1005,12 @@ def make_future_prediction(model, preprocessed_features, prices, window_length, 
         # Calculate predicted price movement
         current_price = float(prices.iloc[-1])
         
-        # Estimate movement magnitude based on recent volatility
-        recent_returns = np.diff(np.log(prices[-20:]))  # Last 20 periods
+        # FIXED: Use more conservative movement estimation
+        recent_returns = np.diff(np.log(prices[-30:]))  # Last 30 periods for better stability
         avg_volatility = np.std(recent_returns)
         
-        # Scale movement by confidence and volatility
-        movement_magnitude = avg_volatility * prediction_proba
+        # Scale movement by confidence and volatility, but cap it for reasonable predictions
+        movement_magnitude = min(avg_volatility * prediction_proba * 0.3, 0.05)  # Cap at 5% max movement
         
         if prediction_binary == 1:  # Predicted increase
             predicted_price = current_price * (1 + movement_magnitude)
