@@ -352,6 +352,8 @@ def main():
 def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, save_model):
     """Train the PLSTM-TAL model with the given configuration."""
     
+    start_time = datetime.now()  # Track training start time
+    
     try:
         with st.spinner("Training PLSTM-TAL model... This may take a few minutes."):
             
@@ -495,19 +497,29 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             
             # Store results
             st.session_state.prediction_results = {
-                'plstm_result': plstm_result,
-                'baseline_results': baseline_results,
-                'model_config': model_config,
-                'data_info': {
-                    'symbol': symbol,
-                    'total_samples': len(stock_data),
-                    'features_count': len(features_df.columns),
-                    'training_samples': len(X_train),
-                    'test_samples': len(X_test)
+                'selected_models': ['PLSTM-TAL'],  # For compatibility with display function
+                'results': {
+                    'plstm_tal_result': {
+                        'model': plstm_model,
+                        'result': plstm_result,
+                        'history': None
+                    }
                 },
-                'models': {
-                    'plstm': plstm_model,
-                    'cae': cae
+                'training_times': {'PLSTM-TAL': (datetime.now() - start_time).total_seconds()},
+                'symbol': symbol,
+                'train_samples': len(X_train),
+                'test_samples': len(X_test),
+                'feature_count': X_train.shape[2],
+                'model_config': model_config,
+                # Store additional data for prediction visualization
+                'test_data': {
+                    'X_test': X_test,
+                    'y_test': y_test,
+                },
+                'price_data': {
+                    'prices': stock_data['close'].values,
+                    'dates': stock_data.index,
+                    'test_start_idx': len(stock_data) - len(X_test) - model_config['window_length'] + 1
                 }
             }
             st.session_state.model_trained = True
@@ -825,7 +837,17 @@ def train_models(stock_data, symbol, selected_models, model_config, use_bayesian
                 'train_samples': len(X_train),
                 'test_samples': len(X_test),
                 'feature_count': input_size,
-                'model_config': model_config
+                'model_config': model_config,
+                # Store additional data for prediction visualization
+                'test_data': {
+                    'X_test': X_test,
+                    'y_test': y_test,
+                },
+                'price_data': {
+                    'prices': stock_data['close'].values,
+                    'dates': stock_data.index,
+                    'test_start_idx': len(stock_data) - len(X_test) - model_config['window_length'] + 1
+                }
             }
             st.session_state.model_trained = True
             
@@ -859,6 +881,220 @@ def train_models(stock_data, symbol, selected_models, model_config, use_bayesian
         st.error(f"❌ Training failed: {str(e)}")
         import traceback
         st.text(traceback.format_exc())
+
+def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_start_idx, window_length):
+    """
+    Convert binary predictions back to price movement predictions.
+    
+    Args:
+        y_pred_binary: Binary predictions (0/1)
+        y_proba: Prediction probabilities 
+        original_prices: Original price series
+        test_start_idx: Starting index for test data in price series
+        window_length: Sequence window length
+        
+    Returns:
+        Dictionary with prediction data for visualization
+    """
+    # Get the actual test period prices
+    actual_test_start = test_start_idx + window_length
+    actual_prices = original_prices[actual_test_start:actual_test_start + len(y_pred_binary)]
+    
+    # Calculate actual returns for the test period
+    if len(actual_prices) > 1:
+        actual_returns = np.diff(np.log(actual_prices))
+    else:
+        actual_returns = np.array([0])
+    
+    # Convert binary predictions to predicted price movements
+    predicted_movements = []
+    predicted_prices = [actual_prices[0]]  # Start with first actual price
+    
+    for i, (pred, prob) in enumerate(zip(y_pred_binary, y_proba)):
+        if i < len(actual_returns):
+            # Use probability to scale the predicted movement
+            movement_magnitude = abs(actual_returns[i]) * prob
+            
+            # Direction based on binary prediction
+            if pred == 1:  # Predicted increase
+                predicted_price = predicted_prices[-1] * (1 + movement_magnitude)
+            else:  # Predicted decrease
+                predicted_price = predicted_prices[-1] * (1 - movement_magnitude)
+                
+            predicted_prices.append(predicted_price)
+            predicted_movements.append(movement_magnitude if pred == 1 else -movement_magnitude)
+    
+    return {
+        'actual_prices': actual_prices,
+        'predicted_prices': np.array(predicted_prices),
+        'predicted_movements': np.array(predicted_movements),
+        'binary_predictions': y_pred_binary,
+        'probabilities': y_proba
+    }
+
+def make_future_prediction(model, preprocessed_features, prices, window_length, model_name, symbol):
+    """
+    Make a future price prediction for the next trading period.
+    
+    Args:
+        model: Trained model
+        preprocessed_features: Already preprocessed feature matrix (same format as training data)
+        prices: Price series
+        window_length: Sequence window length
+        model_name: Name of the model for logging
+        symbol: Stock symbol
+        
+    Returns:
+        Dictionary with future prediction information
+    """
+    try:
+        # Get the latest sequence for prediction - use the last window from preprocessed features
+        if len(preprocessed_features.shape) == 3:
+            # Features are already in sequence format (samples, timesteps, features)
+            latest_features = preprocessed_features[-1]  # Get the last sequence
+        else:
+            # Features need to be shaped into sequence
+            latest_features = preprocessed_features[-window_length:].values
+        
+        latest_prices = prices[-window_length:]
+        
+        # Prepare input tensor
+        if hasattr(model, 'predict_proba'):  # Sklearn models
+            # For sklearn models, flatten the sequence
+            X_latest = latest_features.reshape(1, -1)
+            prediction_proba = model.predict_proba(X_latest)[0]
+            prediction_binary = model.predict(X_latest)[0]
+        else:  # PyTorch models
+            import torch
+            # For LSTM models, we need proper sequence shape: (batch_size, sequence_length, features)
+            X_latest = torch.FloatTensor(latest_features).unsqueeze(0)  # Shape: (1, window_length, num_features)
+            
+            model.eval()
+            with torch.no_grad():
+                outputs = model(X_latest)
+                if hasattr(outputs, 'logits'):
+                    outputs = outputs.logits
+                
+                # Convert to probabilities - handle different output dimensions
+                if len(outputs.shape) == 1:
+                    # Single output (binary classification)
+                    probs = torch.sigmoid(outputs).cpu().numpy()
+                    prediction_proba = probs[0] if len(probs) > 0 else 0.5
+                    prediction_binary = 1 if prediction_proba > 0.5 else 0
+                elif len(outputs.shape) == 2 and outputs.shape[1] == 1:
+                    # Shape: (batch_size, 1) - single output per sample
+                    probs = torch.sigmoid(outputs).cpu().numpy()[0]
+                    prediction_proba = probs[0] if len(probs) > 0 else 0.5
+                    prediction_binary = 1 if prediction_proba > 0.5 else 0
+                else:
+                    # Multi-class output
+                    probs = torch.softmax(outputs, dim=-1).cpu().numpy()[0]
+                    prediction_binary = np.argmax(probs)
+                    prediction_proba = probs[1] if len(probs) > 1 else probs[0]
+        
+        # Calculate predicted price movement
+        current_price = float(prices.iloc[-1])
+        
+        # Estimate movement magnitude based on recent volatility
+        recent_returns = np.diff(np.log(prices[-20:]))  # Last 20 periods
+        avg_volatility = np.std(recent_returns)
+        
+        # Scale movement by confidence and volatility
+        movement_magnitude = avg_volatility * prediction_proba
+        
+        if prediction_binary == 1:  # Predicted increase
+            predicted_price = current_price * (1 + movement_magnitude)
+            direction = "📈 UP"
+            movement = f"+{movement_magnitude*100:.2f}%"
+        else:  # Predicted decrease
+            predicted_price = current_price * (1 - movement_magnitude)
+            direction = "📉 DOWN"
+            movement = f"-{movement_magnitude*100:.2f}%"
+        
+        return {
+            'current_price': current_price,
+            'predicted_price': predicted_price,
+            'direction': direction,
+            'movement_percent': movement_magnitude * 100,
+            'confidence': prediction_proba * 100,
+            'prediction_binary': prediction_binary,
+            'movement_str': movement,
+            'model_name': model_name,
+            'symbol': symbol
+        }
+        
+    except Exception as e:
+        st.error(f"Error making future prediction with {model_name}: {str(e)}")
+        return None
+
+def plot_prediction_comparison(actual_prices, predicted_prices, dates, model_name, symbol):
+    """
+    Create a comparison plot of actual vs predicted prices.
+    
+    Args:
+        actual_prices: Actual price values
+        predicted_prices: Predicted price values  
+        dates: Date indices
+        model_name: Name of the model
+        symbol: Stock symbol
+        
+    Returns:
+        matplotlib figure
+    """
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+    
+    # Ensure we have the same length for comparison
+    min_len = min(len(actual_prices), len(predicted_prices))
+    actual_prices = actual_prices[:min_len]
+    predicted_prices = predicted_prices[:min_len]
+    
+    if len(dates) > min_len:
+        plot_dates = dates[-min_len:]
+    else:
+        plot_dates = dates
+    
+    # Plot 1: Price comparison
+    ax1.plot(plot_dates, actual_prices, label='Actual Prices', color='blue', linewidth=2)
+    ax1.plot(plot_dates, predicted_prices, label='Predicted Prices', color='red', linewidth=2, alpha=0.8)
+    ax1.set_title(f'{model_name} - Price Prediction vs Actual ({symbol})', fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Date')
+    ax1.set_ylabel('Price')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Calculate and display accuracy metrics
+    if len(actual_prices) > 1:
+        # Direction accuracy (did we predict the right direction?)
+        actual_directions = np.sign(np.diff(actual_prices))
+        predicted_directions = np.sign(np.diff(predicted_prices))
+        direction_accuracy = np.mean(actual_directions == predicted_directions) * 100
+        
+        # Mean absolute percentage error
+        mape = np.mean(np.abs((actual_prices - predicted_prices) / actual_prices)) * 100
+        
+        ax1.text(0.02, 0.98, f'Direction Accuracy: {direction_accuracy:.1f}%\nMAPE: {mape:.2f}%', 
+                transform=ax1.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Plot 2: Prediction error
+    if len(actual_prices) == len(predicted_prices):
+        prediction_error = actual_prices - predicted_prices
+        ax2.plot(plot_dates, prediction_error, label='Prediction Error', color='green', linewidth=1)
+        ax2.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax2.set_title('Prediction Error (Actual - Predicted)', fontsize=12)
+        ax2.set_xlabel('Date')
+        ax2.set_ylabel('Error')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # Add statistics
+        rmse = np.sqrt(np.mean(prediction_error**2))
+        ax2.text(0.02, 0.98, f'RMSE: {rmse:.4f}', 
+                transform=ax2.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    plt.tight_layout()
+    return fig
 
 def display_predictions():
     """Display model predictions and accuracy metrics for selected models."""
@@ -990,6 +1226,227 @@ def display_predictions():
         best_accuracy = accuracies[best_model_idx]
         
         st.success(f"🏆 Best performing model: **{best_model}** with {best_accuracy:.1%} accuracy")
+        
+        # NEW: Add future forecasting section
+        st.subheader("🔮 Future Price Forecasting")
+        
+        # Check if we have the required data for future predictions
+        if 'test_data' in results and 'price_data' in results and st.session_state.stock_data is not None:
+            st.info("🎯 **Next Trading Period Forecast** - What the models predict will happen next")
+            
+            # Generate technical indicators for the latest data
+            if TALIB_AVAILABLE:
+                try:
+                    indicators = TechnicalIndicatorsTA()
+                except ImportError:
+                    indicators = TechnicalIndicators()
+            else:
+                indicators = TechnicalIndicators()
+            
+            latest_features_df = indicators.compute_features(st.session_state.stock_data)
+            
+            # Create forecast display for each model
+            forecast_cols = st.columns(len(selected_models))
+            
+            for i, model_name in enumerate(selected_models):
+                with forecast_cols[i]:
+                    result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
+                    
+                    if result_key in model_results:
+                        model_info = model_results[result_key]
+                        model = model_info['model']
+                        
+                        # Make future prediction using test data format
+                        test_data = results['test_data']
+                        future_pred = make_future_prediction(
+                            model, 
+                            test_data['X_test'],  # Use preprocessed test features 
+                            st.session_state.stock_data['close'], 
+                            results['model_config']['window_length'],
+                            model_name,
+                            results['symbol']
+                        )
+                        
+                        if future_pred:
+                            # Display forecast card
+                            st.markdown(f"""
+                            <div style="
+                                border: 2px solid {'#28a745' if future_pred['prediction_binary'] == 1 else '#dc3545'};
+                                border-radius: 10px;
+                                padding: 15px;
+                                background: {'#d4f7dc' if future_pred['prediction_binary'] == 1 else '#f8d7da'};
+                                margin: 10px 0;
+                                text-align: center;
+                            ">
+                                <h4 style="margin: 0; color: #333;">{model_name} Forecast</h4>
+                                <div style="font-size: 24px; margin: 10px 0;">{future_pred['direction']}</div>
+                                <div style="font-size: 18px; color: #666; margin: 5px 0;">
+                                    <strong>Current:</strong> ${future_pred['current_price']:.2f}
+                                </div>
+                                <div style="font-size: 18px; color: #666; margin: 5px 0;">
+                                    <strong>Predicted:</strong> ${future_pred['predicted_price']:.2f}
+                                </div>
+                                <div style="font-size: 16px; color: #888; margin: 5px 0;">
+                                    <strong>Movement:</strong> {future_pred['movement_str']}
+                                </div>
+                                <div style="font-size: 14px; color: #888; margin: 5px 0;">
+                                    <strong>Confidence:</strong> {future_pred['confidence']:.1f}%
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.error(f"Unable to generate forecast for {model_name}")
+            
+            # Add a summary forecast if multiple models
+            if len(selected_models) > 1:
+                st.subheader("📊 Consensus Forecast")
+                
+                # Collect all predictions
+                all_forecasts = []
+                test_data = results['test_data']  # Get test data for preprocessed features
+                for model_name in selected_models:
+                    result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
+                    if result_key in model_results:
+                        model_info = model_results[result_key]
+                        model = model_info['model']
+                        
+                        future_pred = make_future_prediction(
+                            model, 
+                            test_data['X_test'],  # Use preprocessed test features
+                            st.session_state.stock_data['close'], 
+                            results['model_config']['window_length'],
+                            model_name,
+                            results['symbol']
+                        )
+                        
+                        if future_pred:
+                            all_forecasts.append(future_pred)
+                
+                if all_forecasts:
+                    # Calculate consensus
+                    avg_predicted_price = np.mean([f['predicted_price'] for f in all_forecasts])
+                    avg_confidence = np.mean([f['confidence'] for f in all_forecasts])
+                    up_votes = sum([1 for f in all_forecasts if f['prediction_binary'] == 1])
+                    down_votes = len(all_forecasts) - up_votes
+                    
+                    consensus_direction = "📈 UP" if up_votes > down_votes else "📉 DOWN"
+                    current_price = all_forecasts[0]['current_price']
+                    movement_pct = ((avg_predicted_price - current_price) / current_price) * 100
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Consensus Direction", consensus_direction)
+                    with col2:
+                        st.metric("Average Predicted Price", f"${avg_predicted_price:.2f}")
+                    with col3:
+                        st.metric("Average Confidence", f"{avg_confidence:.1f}%")
+                    
+                    # Show voting breakdown
+                    st.write(f"**Model Voting:** {up_votes} models predict UP ⬆️, {down_votes} models predict DOWN ⬇️")
+        
+        # NEW: Add historical price prediction visualization
+        st.subheader("📈 Historical Price Predictions vs Actual")
+        
+        # Check if we have the required data for historical price predictions
+        if 'test_data' in results and 'price_data' in results:
+            price_data = results['price_data']
+            test_data = results['test_data']
+            model_config = results['model_config']
+            
+            # Create tabs for different models
+            if len(selected_models) > 1:
+                model_tabs = st.tabs([f"📊 {model}" for model in selected_models])
+            else:
+                model_tabs = [st.container()]
+            
+            for i, model_name in enumerate(selected_models):
+                with model_tabs[i]:
+                    result_key = model_name.lower().replace('-', '_').replace(' ', '_') + '_result'
+                    
+                    if result_key in model_results:
+                        model_info = model_results[result_key]
+                        result = model_info['result']
+                        
+                        # Extract predictions and probabilities
+                        if isinstance(result, dict) and 'predictions' in result:
+                            y_pred = result['predictions']
+                            y_proba = result.get('probabilities', np.ones_like(y_pred) * 0.5)
+                            
+                            # Convert binary predictions to price predictions
+                            price_pred_data = convert_predictions_to_prices(
+                                y_pred, y_proba, 
+                                price_data['prices'], 
+                                price_data['test_start_idx'],
+                                results['model_config']['window_length']
+                            )
+                            
+                            # Create prediction vs actual plot
+                            if len(price_pred_data['actual_prices']) > 0:
+                                # Get corresponding dates for the test period
+                                test_dates = price_data['dates'][price_data['test_start_idx'] + results['model_config']['window_length']:
+                                                                price_data['test_start_idx'] + results['model_config']['window_length'] + len(y_pred)]
+                                
+                                fig = plot_prediction_comparison(
+                                    price_pred_data['actual_prices'],
+                                    price_pred_data['predicted_prices'],
+                                    test_dates,
+                                    model_name,
+                                    results['symbol']
+                                )
+                                st.pyplot(fig)
+                                plt.close(fig)
+                                
+                                # Show prediction statistics
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    direction_acc = np.mean(
+                                        np.sign(np.diff(price_pred_data['actual_prices'])) == 
+                                        np.sign(np.diff(price_pred_data['predicted_prices']))
+                                    ) * 100 if len(price_pred_data['actual_prices']) > 1 else 0
+                                    st.metric("Direction Accuracy", f"{direction_acc:.1f}%")
+                                
+                                with col2:
+                                    mape = np.mean(np.abs(
+                                        (price_pred_data['actual_prices'] - price_pred_data['predicted_prices'][:len(price_pred_data['actual_prices'])]) / 
+                                        price_pred_data['actual_prices']
+                                    )) * 100
+                                    st.metric("MAPE", f"{mape:.2f}%")
+                                
+                                with col3:
+                                    rmse = np.sqrt(np.mean(
+                                        (price_pred_data['actual_prices'] - price_pred_data['predicted_prices'][:len(price_pred_data['actual_prices'])])**2
+                                    ))
+                                    st.metric("RMSE", f"{rmse:.4f}")
+                                
+                                with col4:
+                                    avg_confidence = np.mean(price_pred_data['probabilities']) * 100
+                                    st.metric("Avg Confidence", f"{avg_confidence:.1f}%")
+                                
+                                # Show sample predictions table
+                                st.subheader(f"📋 Sample Predictions - {model_name}")
+                                
+                                # Create a sample table with last 10 predictions
+                                n_samples = min(10, len(y_pred))
+                                sample_df = pd.DataFrame({
+                                    'Date': test_dates[-n_samples:].strftime('%Y-%m-%d') if hasattr(test_dates[-n_samples:], 'strftime') else [str(d)[:10] for d in test_dates[-n_samples:]],
+                                    'Actual Price': price_pred_data['actual_prices'][-n_samples:],
+                                    'Predicted Price': price_pred_data['predicted_prices'][-n_samples:],
+                                    'Prediction': ['📈 Up' if p == 1 else '📉 Down' for p in y_pred[-n_samples:]],
+                                    'Confidence': [f"{p:.1%}" for p in y_proba[-n_samples:]],
+                                    'Correct': ['✅' if pred == actual else '❌' for pred, actual in zip(
+                                        y_pred[-n_samples:], test_data['y_test'][-n_samples:]
+                                    )]
+                                })
+                                
+                                st.dataframe(sample_df, use_container_width=True)
+                            
+                            else:
+                                st.warning(f"Unable to generate price predictions for {model_name}")
+                        else:
+                            st.warning(f"No prediction data available for {model_name}")
+        else:
+            st.warning("Price prediction data not available. Please retrain the models to see price predictions.")
         
     else:
         st.warning("No model results available to display.")
