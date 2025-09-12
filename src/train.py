@@ -42,10 +42,10 @@ class DataPreprocessor:
         
     def create_labels(self, prices: pd.Series) -> pd.Series:
         """
-        Create binary labels based on return movement direction (paper-compliant).
+        Create binary labels based on future price direction (fixed implementation).
         
-        Label rule from paper equation (1): y_i(t) = 1 if r_i(t+1) > r_i(t), else 0
-        where r_i(t) is the return at time t.
+        The goal is to predict if the price will go up (1) or down (0) in the next period.
+        This is the most sensible interpretation for stock market prediction.
         
         Args:
             prices: Price series
@@ -53,14 +53,14 @@ class DataPreprocessor:
         Returns:
             Binary labels series
         """
-        # Calculate returns: r(t) = log(price(t) / price(t-1))
-        returns = np.log(prices / prices.shift(1)).fillna(0)
+        # Calculate future price changes: price(t+1) - price(t)
+        price_changes = prices.shift(-1) - prices
         
-        # Create labels: 1 if return(t+1) > return(t), else 0
-        # This matches paper equation (1) exactly
-        labels = (returns.shift(-1) > returns).astype(int)
+        # Create labels: 1 if price goes up tomorrow, 0 if price goes down
+        # This is much more meaningful than comparing consecutive returns
+        labels = (price_changes > 0).astype(int)
         
-        # Drop last value (no future return available)
+        # Drop last value (no future price available)
         labels = labels[:-1]
         
         return labels

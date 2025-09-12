@@ -25,10 +25,10 @@ def test_quick_training_pipeline():
     print("🧪 Testing Quick Training Pipeline")
     print("=" * 50)
     
-    # Step 1: Load stock data (small dataset)
-    print("\n1. Loading stock data (1 year)...")
+    # Step 1: Load stock data (larger dataset for better performance)
+    print("\n1. Loading stock data (3 years for better performance)...")
     loader = CustomStockDataLoader()
-    stock_data = loader.download_stock_data("AAPL", "2021-01-01", "2022-01-01")
+    stock_data = loader.download_stock_data("AAPL", "2019-01-01", "2022-01-01")
     print(f"✅ Loaded {len(stock_data)} days of AAPL data")
     
     # Step 2: Generate technical indicators
@@ -46,12 +46,12 @@ def test_quick_training_pipeline():
     # Step 4: Quick CAE training
     print("\n4. Training CAE (quick)...")
     cae = CAEFeatureExtractor(hidden_dim=16, encoding_dim=4, dropout=0.1, lambda_reg=1e-4)
-    cae_history = cae.train(features_df, epochs=3, batch_size=32, learning_rate=1e-3, verbose=False)
+    cae_history = cae.train(features_df, epochs=10, batch_size=32, learning_rate=1e-3, verbose=False)
     print(f"✅ CAE trained")
     
     # Step 5: Data preprocessing
     print("\n5. Preprocessing data...")
-    preprocessor = DataPreprocessor(window_length=5, step_size=1)  # Shorter sequences
+    preprocessor = DataPreprocessor(window_length=20, step_size=1)  # Paper-compliant sequences
     X_sequences, y_labels = preprocessor.prepare_data(features_df, stock_data['close'], cae, filtered_prices)
     print(f"✅ Data shape: {X_sequences.shape}, {y_labels.shape}")
     
@@ -71,7 +71,7 @@ def test_quick_training_pipeline():
     print("\n6. Training PLSTM-TAL (quick)...")
     plstm_model = PLSTM_TAL(
         input_size=input_size,
-        hidden_size=16,  # Smaller model
+        hidden_size=64,  # Paper-compliant model size
         num_layers=1,
         dropout=0.1,
         activation='tanh'
@@ -80,8 +80,8 @@ def test_quick_training_pipeline():
     trainer = ModelTrainer(plstm_model)
     history = trainer.train(
         X_train, y_train, X_val, y_val,
-        epochs=3,  # Very quick training
-        batch_size=16,
+        epochs=50,  # More thorough training
+        batch_size=32,  # Paper-compliant batch size
         learning_rate=1e-3,
         optimizer_name='adamax',
         early_stopping_patience=10

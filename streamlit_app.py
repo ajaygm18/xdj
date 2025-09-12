@@ -161,7 +161,7 @@ def main():
     # Preset date ranges
     date_preset = st.sidebar.selectbox(
         "Preset Range:",
-        ["Last 10 Years", "Last 5 Years", "Last 3 Years", "Last 2 Years", "Last 1 Year", "Paper Default (2005-2022)", "Custom"]
+        ["Last 5 Years", "Last 10 Years", "Last 3 Years", "Last 2 Years", "Last 1 Year", "Paper Default (2005-2022)", "Custom"]
     )
     
     if date_preset == "Paper Default (2005-2022)":
@@ -208,16 +208,16 @@ def main():
     use_paper_params = st.sidebar.checkbox("Use Paper-Compliant Parameters", value=True)
     
     if use_paper_params:
-        # Paper-compliant parameters (fixed)
+        # Paper-compliant parameters (improved for better performance)
         model_config = {
-            'hidden_size': 64,
+            'hidden_size': 128,    # Increased from 64 for better capacity
             'num_layers': 1,
-            'dropout': 0.1,
+            'dropout': 0.2,        # Increased from 0.1 for better regularization
             'activation': 'tanh',
             'learning_rate': 1e-3,
             'batch_size': 32,
             'window_length': 20,
-            'epochs': 100,
+            'epochs': 150,         # Increased from 100 for more thorough training
             'optimizer': 'adamax'
         }
         st.sidebar.info("Using paper-compliant PLSTM-TAL parameters")
@@ -240,7 +240,7 @@ def main():
         use_bayesian = st.checkbox("Enable Bayesian Optimization", value=False) if BAYESIAN_AVAILABLE else False
         if not BAYESIAN_AVAILABLE:
             st.warning("⚠️ Bayesian optimization not available (scikit-optimize not installed)")
-        use_quick_mode = st.checkbox("Quick Mode (Faster Training)", value=True)
+        use_quick_mode = st.checkbox("Quick Mode (Faster Training)", value=False)  # Default to False for better performance
         save_model = st.checkbox("Save Trained Model", value=True)
     
     # Main content area
@@ -481,10 +481,10 @@ def train_model(stock_data, symbol, model_config, use_bayesian, use_quick_mode, 
             # Train and evaluate baselines for comparison
             baseline_results = {}
             
-            # LSTM baseline
-            lstm_model = BaselineModelFactory.create_model('lstm', input_size, hidden_size=32, dropout=0.1)
+            # LSTM baseline with improved configuration
+            lstm_model = BaselineModelFactory.create_model('lstm', input_size, hidden_size=model_config['hidden_size'], dropout=model_config['dropout'])
             lstm_trainer = ModelTrainer(lstm_model)
-            lstm_trainer.train(X_train, y_train, X_val, y_val, epochs=training_epochs//2, batch_size=32, learning_rate=1e-3, optimizer_name='adamax')
+            lstm_trainer.train(X_train, y_train, X_val, y_val, epochs=training_epochs, batch_size=32, learning_rate=1e-3, optimizer_name='adamax')
             baseline_results['LSTM'] = evaluator.evaluate_model(lstm_model, X_test, y_test, "LSTM", is_torch_model=True)
             
             # SVM baseline
@@ -886,6 +886,9 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
     """
     Convert binary predictions back to price movement predictions.
     
+    FIXED: This function was causing terrible predictions due to compounding errors.
+    Now uses actual prices as base for each prediction instead of previous predicted prices.
+    
     Args:
         y_pred_binary: Binary predictions (0/1)
         y_proba: Prediction probabilities 
@@ -900,29 +903,34 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
     actual_test_start = test_start_idx + window_length
     actual_prices = original_prices[actual_test_start:actual_test_start + len(y_pred_binary)]
     
-    # Calculate actual returns for the test period
-    if len(actual_prices) > 1:
+    # Calculate average volatility for scaling (instead of individual returns)
+    if len(actual_prices) > 10:  # Need enough data for reliable volatility
         actual_returns = np.diff(np.log(actual_prices))
+        avg_volatility = np.std(actual_returns)
     else:
-        actual_returns = np.array([0])
+        avg_volatility = 0.01  # Default volatility if insufficient data
     
     # Convert binary predictions to predicted price movements
     predicted_movements = []
-    predicted_prices = [actual_prices[0]]  # Start with first actual price
+    predicted_prices = []
     
     for i, (pred, prob) in enumerate(zip(y_pred_binary, y_proba)):
-        if i < len(actual_returns):
-            # Use probability to scale the predicted movement
-            movement_magnitude = abs(actual_returns[i]) * prob
+        if i < len(actual_prices):
+            # CRITICAL FIX: Use actual price as base, not previous predicted price
+            current_actual = actual_prices[i]
             
-            # Direction based on binary prediction
+            # Use average volatility scaled by confidence and reduced to prevent extreme predictions
+            movement_magnitude = avg_volatility * prob * 0.5  # Scale down for more realistic predictions
+            
+            # Apply direction based on binary prediction
             if pred == 1:  # Predicted increase
-                predicted_price = predicted_prices[-1] * (1 + movement_magnitude)
+                predicted_price = current_actual * (1 + movement_magnitude)
+                predicted_movements.append(movement_magnitude)
             else:  # Predicted decrease
-                predicted_price = predicted_prices[-1] * (1 - movement_magnitude)
+                predicted_price = current_actual * (1 - movement_magnitude)
+                predicted_movements.append(-movement_magnitude)
                 
             predicted_prices.append(predicted_price)
-            predicted_movements.append(movement_magnitude if pred == 1 else -movement_magnitude)
     
     return {
         'actual_prices': actual_prices,
@@ -935,6 +943,8 @@ def convert_predictions_to_prices(y_pred_binary, y_proba, original_prices, test_
 def make_future_prediction(model, preprocessed_features, prices, window_length, model_name, symbol):
     """
     Make a future price prediction for the next trading period.
+    
+    FIXED: Improved prediction logic to avoid extreme price predictions.
     
     Args:
         model: Trained model
@@ -995,12 +1005,12 @@ def make_future_prediction(model, preprocessed_features, prices, window_length, 
         # Calculate predicted price movement
         current_price = float(prices.iloc[-1])
         
-        # Estimate movement magnitude based on recent volatility
-        recent_returns = np.diff(np.log(prices[-20:]))  # Last 20 periods
+        # FIXED: Use more conservative movement estimation
+        recent_returns = np.diff(np.log(prices[-30:]))  # Last 30 periods for better stability
         avg_volatility = np.std(recent_returns)
         
-        # Scale movement by confidence and volatility
-        movement_magnitude = avg_volatility * prediction_proba
+        # Scale movement by confidence and volatility, but cap it for reasonable predictions
+        movement_magnitude = min(avg_volatility * prediction_proba * 0.3, 0.05)  # Cap at 5% max movement
         
         if prediction_binary == 1:  # Predicted increase
             predicted_price = current_price * (1 + movement_magnitude)

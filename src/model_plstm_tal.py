@@ -55,10 +55,30 @@ class PeepholeLSTMCell(nn.Module):
         self.reset_parameters()
     
     def reset_parameters(self):
-        """Initialize parameters."""
+        """Initialize parameters with improved LSTM initialization."""
         std = 1.0 / np.sqrt(self.hidden_size)
-        for weight in self.parameters():
-            weight.data.uniform_(-std, std)
+        
+        # Initialize weight matrices with Xavier uniform
+        nn.init.xavier_uniform_(self.weight_ih)
+        nn.init.xavier_uniform_(self.weight_hh)
+        
+        # Initialize peephole connections with smaller values
+        nn.init.uniform_(self.weight_cf, -0.1, 0.1)
+        nn.init.uniform_(self.weight_ci, -0.1, 0.1) 
+        nn.init.uniform_(self.weight_co, -0.1, 0.1)
+        
+        # Initialize biases properly for LSTM
+        if self.bias:
+            # Initialize all biases to zero except forget gate bias
+            nn.init.zeros_(self.bias_ih)
+            nn.init.zeros_(self.bias_hh)
+            
+            # Set forget gate bias to 1 for better gradient flow
+            # Forget gate is the second quarter of the bias vector
+            forget_bias_start = self.hidden_size
+            forget_bias_end = 2 * self.hidden_size
+            nn.init.ones_(self.bias_ih[forget_bias_start:forget_bias_end])
+            nn.init.ones_(self.bias_hh[forget_bias_start:forget_bias_end])
     
     def forward(self, input_tensor: torch.Tensor, hidden: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -352,6 +372,24 @@ class PLSTM_TAL(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(lstm_output_size // 4, 1),  # Output layer for binary classification
         )
+        
+        # Initialize classifier layers properly
+        self._init_classifier_weights()
+        
+    def _init_classifier_weights(self):
+        """Initialize classifier weights properly."""
+        for module in self.classifier:
+            if isinstance(module, nn.Linear):
+                # Xavier initialization for linear layers
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+                    
+        # Initialize attention layer weights
+        nn.init.xavier_uniform_(self.temporal_attention.attention_linear.weight)
+        if self.temporal_attention.attention_linear.bias is not None:
+            nn.init.zeros_(self.temporal_attention.attention_linear.bias)
+        nn.init.xavier_uniform_(self.temporal_attention.context_vector.weight)
         
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
